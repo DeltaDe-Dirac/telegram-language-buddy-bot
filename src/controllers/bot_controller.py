@@ -63,30 +63,16 @@ def manual_translate():
     try:
         data = request.get_json()
         text = data.get('text')
-        lang1 = data.get('lang1', 'en')
-        lang2 = data.get('lang2', 'ru')
+        lang1 = data.get('lang1', get_bot().translator.detect_language(text))
+        lang2 = data.get('lang2', 'en')
         
-        if not text:
-            return jsonify({"error": "Text is required"}), 400
-        
-        # Determine target language based on detected language
-        detected_lang = get_bot().translator.detect_language(text)
-        
-        if detected_lang == lang1:
-            target_lang = lang2
-        elif detected_lang == lang2:
-            target_lang = lang1
-        else:
-            # If detected language is neither of the pair, translate to lang1
-            target_lang = lang1
-        
-        translated = get_bot().translator.translate_text(text, target_lang, detected_lang)
+        translated = get_bot().translator.translate_text(text, lang2, lang1)
         
         return jsonify({
             "original": text,
             "translated": translated,
-            "source_language": detected_lang,
-            "target_language": target_lang,
+            "source_language": lang1,
+            "target_language": lang2,
             "language_pair": f"{lang1} ↔ {lang2}"
         })
         
