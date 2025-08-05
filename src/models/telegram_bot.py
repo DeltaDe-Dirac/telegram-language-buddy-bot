@@ -146,7 +146,7 @@ class TelegramBot:
         }
         return flag_map.get(lang_code, '🌍')
     
-    def _get_language_code_from_button(self, button_text: str) -> str:
+    def _get_language_code_from_button(self, button_text: str) -> str | None:
         """Extract language code from button text"""
         # Remove flag emoji and get language name
         parts = button_text.split(' ', 1)
