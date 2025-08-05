@@ -76,7 +76,7 @@ class TelegramBot:
     
     def get_user_language_pair(self, user_id: int) -> Tuple[str, str]:
         """Get user's language pair"""
-        return self.user_preferences.get(user_id, ('en', 'es'))
+        return self.user_preferences.get(user_id, ('en', 'ru'))
     
     def set_user_language_pair(self, user_id: int, lang1: str, lang2: str) -> bool:
         """Set user's language pair"""
@@ -128,8 +128,8 @@ class TelegramBot:
         elif detected_lang == lang2:
             target_lang = lang1
         else:
-            # If detected language is neither of the pair, translate to lang1
-            target_lang = lang1
+            # If detected language is neither of the pair, translate to lang2
+            target_lang = lang2
         
         # Don't translate if already in target language
         if detected_lang == target_lang:
