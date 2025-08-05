@@ -143,7 +143,7 @@ class TelegramBot:
         # Remove flag emoji and get language name
         parts = button_text.split(' ', 1)
         if len(parts) != 2:
-            return None
+            return ''
         
         lang_name = parts[1]
         
@@ -152,7 +152,7 @@ class TelegramBot:
             if name == lang_name:
                 return code
         
-        return None
+        return ''
     
     def process_message(self, update: Dict) -> None:
         """Process incoming Telegram message"""
