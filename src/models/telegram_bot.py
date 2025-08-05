@@ -228,110 +228,126 @@ class TelegramBot:
         
         # Handle two-step language selection
         if user_id in self.language_selection_state:
-            state = self.language_selection_state[user_id]
-            
-            # Check if data is a direct language code
-            if data in LanguageDetector.SUPPORTED_LANGUAGES:
-                selected_lang_code = data
-            else:
-                # Fallback to parsing button text (for legacy compatibility)
-                selected_lang_code = self._get_language_code_from_button(data)
-            
-            if not selected_lang_code:
-                self.send_message(chat_id, "❌ Invalid language selection. Please try again.")
-                return
-            
-            if state['step'] == 'first_lang':
-                # First language selected, now show second language options
-                state['step'] = 'second_lang'
-                state['first_lang'] = selected_lang_code
-                
-                first_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[selected_lang_code]
-                first_flag = self._get_language_flag(selected_lang_code)
-                
-                # Create keyboard for second language (excluding first language)
-                keyboard = self._create_language_keyboard(exclude_lang=selected_lang_code)
-                
-                text = f"✅ *First language selected: {first_flag} {first_lang_name}*\n\nNow choose your second language:"
-                self.send_keyboard(chat_id, text, keyboard)
-                
-            elif state['step'] == 'second_lang':
-                # Second language selected, complete the pair
-                first_lang = state['first_lang']
-                second_lang = selected_lang_code
-                
-                if self.set_user_language_pair(user_id, first_lang, second_lang):
-                    first_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[first_lang]
-                    second_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[second_lang]
-                    first_flag = self._get_language_flag(first_lang)
-                    second_flag = self._get_language_flag(second_lang)
-                    
-                    response = f"✅ *Language pair set to {first_flag} {first_lang_name} ↔ {second_flag} {second_lang_name}*\n\nNow send me any message and I'll translate between these languages!"
-                    self.send_message(chat_id, response)
-                else:
-                    self.send_message(chat_id, "❌ Failed to set language pair. Please try again.")
-                
-                # Clear selection state
-                del self.language_selection_state[user_id]
-        
+            self._handle_language_selection(chat_id, user_id, data)
         # Handle legacy language pair selection (for backward compatibility)
         elif '|' in data:  # Format: "flag1|flag2"
-            flag1, flag2 = data.split('|')
-            
-            # Map flag emojis back to language codes
-            flag_to_lang = {
-                '\U0001F1F9\U0001F1ED': 'th',  # 🇹🇭
-                '\U0001F1F7\U0001F1FA': 'ru',  # 🇷🇺
-                '\U0001F1E8\U0001F1F3': 'zh',  # 🇨🇳
-                '\U0001F1FA\U0001F1F8': 'en',  # 🇺🇸
-                '\U0001F1EA\U0001F1F8': 'es',  # 🇪🇸
-                '\U0001F1EB\U0001F1F7': 'fr',  # 🇫🇷
-                '\U0001F1E9\U0001F1EA': 'de',  # 🇩🇪
-                '\U0001F1EE\U0001F1F9': 'it',  # 🇮🇹
-                '\U0001F1EF\U0001F1F5': 'ja',  # 🇯🇵
-                '\U0001F1F0\U0001F1F7': 'ko',  # 🇰🇷
-                '\U0001F1F8\U0001F1E6': 'ar',  # 🇸🇦
-                '\U0001F1EE\U0001F1F3': 'hi',  # 🇮🇳
-                '\U0001F1F5\U0001F1F1': 'pl',  # 🇵🇱
-                '\U0001F1E8\U0001F1FF': 'cs',  # 🇨🇿
-                '\U0001F1F3\U0001F1F1': 'nl',  # 🇳🇱
-                '\U0001F1F8\U0001F1EA': 'sv',  # 🇸🇪
-                '\U0001F1F5\U0001F1F9': 'pt',  # 🇵🇹
-                '\U0001F1F9\U0001F1F7': 'tr',  # 🇹🇷
-                '\U0001F1E9\U0001F1F0': 'da',  # 🇩🇰
-                '\U0001F1F3\U0001F1F4': 'no',  # 🇳🇴
-                '\U0001F1EB\U0001F1EE': 'fi',  # 🇫🇮
-                '\U0001F1EC\U0001F1F7': 'el',  # 🇬🇷
-                '\U0001F1EE\U0001F1F1': 'he',  # 🇮🇱
-                '\U0001F1FB\U0001F1F3': 'vi',  # 🇻🇳
-                '\U0001F1EE\U0001F1E9': 'id',  # 🇮🇩
-                '\U0001F1F2\U0001F1FE': 'ms',  # 🇲🇾
-                '\U0001F1F5\U0001F1ED': 'tl',  # 🇵🇭
-                '\U0001F1FA\U0001F1E6': 'uk',  # 🇺🇦
-                '\U0001F1F8\U0001F1F0': 'sk',  # 🇸🇰
-                '\U0001F1ED\U0001F1FA': 'hu',  # 🇭🇺
-                '\U0001F1F7\U0001F1F4': 'ro',  # 🇷🇴
-                '\U0001F1E7\U0001F1EC': 'bg',  # 🇧🇬
-                '\U0001F1ED\U0001F1F7': 'hr',  # 🇭🇷
-                '\U0001F1F7\U0001F1F8': 'sr',  # 🇷🇸
-                '\U0001F1F8\U0001F1EE': 'sl',  # 🇸🇮
-                '\U0001F1EA\U0001F1EA': 'et',  # 🇪🇪
-                '\U0001F1F1\U0001F1FB': 'lv',  # 🇱🇻
-                '\U0001F1F1\U0001F1F9': 'lt',  # 🇱🇹
-                '\U0001F1EE\U0001F1F7': 'fa',  # 🇮🇷
-                '\U0001F1F5\U0001F1F0': 'ur',  # 🇵🇰
-                '\U0001F1E7\U0001F1E9': 'bn',  # 🇧🇩
-                '\U0001F1F1\U0001F1F0': 'si'   # 🇱🇰
-            }
-            
-            lang1 = flag_to_lang.get(flag1)
-            lang2 = flag_to_lang.get(flag2)
-            
-            if lang1 and lang2 and self.set_user_language_pair(user_id, lang1, lang2):
-                lang1_name = LanguageDetector.SUPPORTED_LANGUAGES[lang1]
-                lang2_name = LanguageDetector.SUPPORTED_LANGUAGES[lang2]
-                response = f"✅ *Language pair set to {lang1_name} ↔ {lang2_name}*\n\nNow send me any message and I'll translate between these languages!"
-                self.send_message(chat_id, response)
+            self._handle_legacy_language_selection(chat_id, user_id, data)
+    
+    def _handle_language_selection(self, chat_id: int, user_id: int, data: str) -> None:
+        """Handle two-step language selection process"""
+        state = self.language_selection_state[user_id]
+        selected_lang_code = self._extract_language_code(data)
+        
+        if not selected_lang_code:
+            self.send_message(chat_id, "❌ Invalid language selection. Please try again.")
+            return
+        
+        if state['step'] == 'first_lang':
+            self._handle_first_language_selection(chat_id, user_id, selected_lang_code)
+        elif state['step'] == 'second_lang':
+            self._handle_second_language_selection(chat_id, user_id, selected_lang_code)
+    
+    def _extract_language_code(self, data: str) -> str | None:
+        """Extract language code from callback data"""
+        if data in LanguageDetector.SUPPORTED_LANGUAGES:
+            return data
+        return self._get_language_code_from_button(data)
+    
+    def _handle_first_language_selection(self, chat_id: int, user_id: int, selected_lang_code: str) -> None:
+        """Handle first language selection in two-step process"""
+        state = self.language_selection_state[user_id]
+        state['step'] = 'second_lang'
+        state['first_lang'] = selected_lang_code
+        
+        first_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[selected_lang_code]
+        first_flag = self._get_language_flag(selected_lang_code)
+        
+        keyboard = self._create_language_keyboard(exclude_lang=selected_lang_code)
+        text = f"✅ *First language selected: {first_flag} {first_lang_name}*\n\nNow choose your second language:"
+        self.send_keyboard(chat_id, text, keyboard)
+    
+    def _handle_second_language_selection(self, chat_id: int, user_id: int, selected_lang_code: str) -> None:
+        """Handle second language selection in two-step process"""
+        state = self.language_selection_state[user_id]
+        first_lang = state['first_lang']
+        second_lang = selected_lang_code
+        
+        if self.set_user_language_pair(user_id, first_lang, second_lang):
+            self._send_language_pair_confirmation(chat_id, first_lang, second_lang)
+        else:
+            self.send_message(chat_id, "❌ Failed to set language pair. Please try again.")
+        
+        del self.language_selection_state[user_id]
+    
+    def _send_language_pair_confirmation(self, chat_id: int, first_lang: str, second_lang: str) -> None:
+        """Send confirmation message for language pair setup"""
+        first_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[first_lang]
+        second_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[second_lang]
+        first_flag = self._get_language_flag(first_lang)
+        second_flag = self._get_language_flag(second_lang)
+        
+        response = f"✅ *Language pair set to {first_flag} {first_lang_name} ↔ {second_flag} {second_lang_name}*\n\nNow send me any message and I'll translate between these languages!"
+        self.send_message(chat_id, response)
+    
+    def _handle_legacy_language_selection(self, chat_id: int, user_id: int, data: str) -> None:
+        """Handle legacy language pair selection format"""
+        flag1, flag2 = data.split('|')
+        lang1 = self._get_language_from_flag(flag1)
+        lang2 = self._get_language_from_flag(flag2)
+        
+        if lang1 and lang2 and self.set_user_language_pair(user_id, lang1, lang2):
+            lang1_name = LanguageDetector.SUPPORTED_LANGUAGES[lang1]
+            lang2_name = LanguageDetector.SUPPORTED_LANGUAGES[lang2]
+            response = f"✅ *Language pair set to {lang1_name} ↔ {lang2_name}*\n\nNow send me any message and I'll translate between these languages!"
+            self.send_message(chat_id, response)
+    
+    def _get_language_from_flag(self, flag: str) -> str | None:
+        """Get language code from flag emoji"""
+        flag_to_lang = {
+            '\U0001F1F9\U0001F1ED': 'th',  # 🇹🇭
+            '\U0001F1F7\U0001F1FA': 'ru',  # 🇷🇺
+            '\U0001F1E8\U0001F1F3': 'zh',  # 🇨🇳
+            '\U0001F1FA\U0001F1F8': 'en',  # 🇺🇸
+            '\U0001F1EA\U0001F1F8': 'es',  # 🇪🇸
+            '\U0001F1EB\U0001F1F7': 'fr',  # 🇫🇷
+            '\U0001F1E9\U0001F1EA': 'de',  # 🇩🇪
+            '\U0001F1EE\U0001F1F9': 'it',  # 🇮🇹
+            '\U0001F1EF\U0001F1F5': 'ja',  # 🇯🇵
+            '\U0001F1F0\U0001F1F7': 'ko',  # 🇰🇷
+            '\U0001F1F8\U0001F1E6': 'ar',  # 🇸🇦
+            '\U0001F1EE\U0001F1F3': 'hi',  # 🇮🇳
+            '\U0001F1F5\U0001F1F1': 'pl',  # 🇵🇱
+            '\U0001F1E8\U0001F1FF': 'cs',  # 🇨🇿
+            '\U0001F1F3\U0001F1F1': 'nl',  # 🇳🇱
+            '\U0001F1F8\U0001F1EA': 'sv',  # 🇸🇪
+            '\U0001F1F5\U0001F1F9': 'pt',  # 🇵🇹
+            '\U0001F1F9\U0001F1F7': 'tr',  # 🇹🇷
+            '\U0001F1E9\U0001F1F0': 'da',  # 🇩🇰
+            '\U0001F1F3\U0001F1F4': 'no',  # 🇳🇴
+            '\U0001F1EB\U0001F1EE': 'fi',  # 🇫🇮
+            '\U0001F1EC\U0001F1F7': 'el',  # 🇬🇷
+            '\U0001F1EE\U0001F1F1': 'he',  # 🇮🇱
+            '\U0001F1FB\U0001F1F3': 'vi',  # 🇻🇳
+            '\U0001F1EE\U0001F1E9': 'id',  # 🇮🇩
+            '\U0001F1F2\U0001F1FE': 'ms',  # 🇲🇾
+            '\U0001F1F5\U0001F1ED': 'tl',  # 🇵🇭
+            '\U0001F1FA\U0001F1E6': 'uk',  # 🇺🇦
+            '\U0001F1F8\U0001F1F0': 'sk',  # 🇸🇰
+            '\U0001F1ED\U0001F1FA': 'hu',  # 🇭🇺
+            '\U0001F1F7\U0001F1F4': 'ro',  # 🇷🇴
+            '\U0001F1E7\U0001F1EC': 'bg',  # 🇧🇬
+            '\U0001F1ED\U0001F1F7': 'hr',  # 🇭🇷
+            '\U0001F1F7\U0001F1F8': 'sr',  # 🇷🇸
+            '\U0001F1F8\U0001F1EE': 'sl',  # 🇸🇮
+            '\U0001F1EA\U0001F1EA': 'et',  # 🇪🇪
+            '\U0001F1F1\U0001F1FB': 'lv',  # 🇱🇻
+            '\U0001F1F1\U0001F1F9': 'lt',  # 🇱🇹
+            '\U0001F1EE\U0001F1F7': 'fa',  # 🇮🇷
+            '\U0001F1F5\U0001F1F0': 'ur',  # 🇵🇰
+            '\U0001F1E7\U0001F1E9': 'bn',  # 🇧🇩
+            '\U0001F1F1\U0001F1F0': 'si'   # 🇱🇰
+        }
+        return flag_to_lang.get(flag)
     
     def _handle_command(self, chat_id: int, user_id: int, command: str) -> None:
         """Handle bot commands"""
