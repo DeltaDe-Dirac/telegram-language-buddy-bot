@@ -63,8 +63,12 @@ def manual_translate():
     try:
         data = request.get_json()
         text = data.get('text')
-        lang1 = data.get('lang1', get_bot().translator.detect_language(text))
+        detected_lang = get_bot().translator.detect_language(text)
+        lang1 = data.get('lang1', detected_lang)
         lang2 = data.get('lang2', 'en')
+
+        if detected_lang != lang1:
+            logger.warning(f"Detected language is {detected_lang}, but requested to translate from {lang1}")
         
         translated = get_bot().translator.translate_text(text, lang2, lang1)
         
