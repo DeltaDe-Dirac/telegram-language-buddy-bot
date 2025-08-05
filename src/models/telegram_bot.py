@@ -22,6 +22,10 @@ class TelegramBot:
         self.user_preferences = {}
         self.user_stats = {}
         
+        # State management for two-step language selection
+        # {user_id: {'step': 'first_lang' or 'second_lang', 'first_lang': 'lang_code'}}
+        self.language_selection_state = {}
+        
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
     
@@ -93,6 +97,63 @@ class TelegramBot:
             self.user_stats[user_id] = {'translations': 0, 'joined': datetime.now()}
         self.user_stats[user_id]['translations'] += 1
     
+    def _create_language_keyboard(self, exclude_lang: str = None) -> List[List[str]]:
+        """Create keyboard with all available languages"""
+        languages = list(LanguageDetector.SUPPORTED_LANGUAGES.items())
+        
+        # Filter out excluded language if specified
+        if exclude_lang:
+            languages = [(code, name) for code, name in languages if code != exclude_lang]
+        
+        # Create keyboard with 3 languages per row
+        keyboard = []
+        row = []
+        for code, name in languages:
+            # Create button text with flag emoji and language name
+            flag_emoji = self._get_language_flag(code)
+            button_text = f"{flag_emoji} {name}"
+            row.append(button_text)
+            
+            if len(row) == 3:
+                keyboard.append(row)
+                row = []
+        
+        # Add remaining languages
+        if row:
+            keyboard.append(row)
+        
+        return keyboard
+    
+    def _get_language_flag(self, lang_code: str) -> str:
+        """Get flag emoji for language code"""
+        flag_map = {
+            'th': '\U0001F1F9\U0001F1ED', 'ru': '\U0001F1F7\U0001F1FA', 'zh': '\U0001F1E8\U0001F1F3', 'en': '\U0001F1FA\U0001F1F8', 'es': '\U0001F1EA\U0001F1F8', 'fr': '\U0001F1EB\U0001F1F7',
+            'de': '\U0001F1E9\U0001F1EA', 'it': '\U0001F1EE\U0001F1F9', 'ja': '\U0001F1EF\U0001F1F5', 'ko': '\U0001F1F0\U0001F1F7', 'ar': '\U0001F1F8\U0001F1E6', 'hi': '\U0001F1EE\U0001F1F3',
+            'pl': '\U0001F1F5\U0001F1F1', 'cs': '\U0001F1E8\U0001F1FF', 'nl': '\U0001F1F3\U0001F1F1', 'sv': '\U0001F1F8\U0001F1EA', 'pt': '\U0001F1F5\U0001F1F9', 'tr': '\U0001F1F9\U0001F1F7',
+            'da': '\U0001F1E9\U0001F1F0', 'no': '\U0001F1F3\U0001F1F4', 'fi': '\U0001F1EB\U0001F1EE', 'el': '\U0001F1EC\U0001F1F7', 'he': '\U0001F1EE\U0001F1F1', 'vi': '\U0001F1FB\U0001F1F3',
+            'id': '\U0001F1EE\U0001F1E9', 'ms': '\U0001F1F2\U0001F1FE', 'tl': '\U0001F1F5\U0001F1ED', 'uk': '\U0001F1FA\U0001F1E6', 'sk': '\U0001F1F8\U0001F1F0', 'hu': '\U0001F1ED\U0001F1FA',
+            'ro': '\U0001F1F7\U0001F1F4', 'bg': '\U0001F1E7\U0001F1EC', 'hr': '\U0001F1ED\U0001F1F7', 'sr': '\U0001F1F7\U0001F1F8', 'sl': '\U0001F1F8\U0001F1EE', 'et': '\U0001F1EA\U0001F1EA',
+            'lv': '\U0001F1F1\U0001F1FB', 'lt': '\U0001F1F1\U0001F1F9', 'fa': '\U0001F1EE\U0001F1F7', 'ur': '\U0001F1F5\U0001F1F0', 'bn': '\U0001F1E7\U0001F1E9', 'ta': '\U0001F1EE\U0001F1F3',
+            'te': '\U0001F1EE\U0001F1F3', 'mr': '\U0001F1EE\U0001F1F3', 'gu': '\U0001F1EE\U0001F1F3', 'kn': '\U0001F1EE\U0001F1F3', 'ml': '\U0001F1EE\U0001F1F3', 'si': '\U0001F1F1\U0001F1F0'
+        }
+        return flag_map.get(lang_code, '🌍')
+    
+    def _get_language_code_from_button(self, button_text: str) -> str:
+        """Extract language code from button text"""
+        # Remove flag emoji and get language name
+        parts = button_text.split(' ', 1)
+        if len(parts) != 2:
+            return None
+        
+        lang_name = parts[1]
+        
+        # Find language code by name
+        for code, name in LanguageDetector.SUPPORTED_LANGUAGES.items():
+            if name == lang_name:
+                return code
+        
+        return None
+    
     def process_message(self, update: Dict) -> None:
         """Process incoming Telegram message"""
         try:
@@ -157,8 +218,50 @@ class TelegramBot:
         user_id = callback_query['from']['id']
         data = callback_query['data']
         
-        # Handle language pair selection
-        if '|' in data:  # Format: "flag1|flag2"
+        # Handle two-step language selection
+        if user_id in self.language_selection_state:
+            state = self.language_selection_state[user_id]
+            selected_lang_code = self._get_language_code_from_button(data)
+            
+            if not selected_lang_code:
+                self.send_message(chat_id, "❌ Invalid language selection. Please try again.")
+                return
+            
+            if state['step'] == 'first_lang':
+                # First language selected, now show second language options
+                state['step'] = 'second_lang'
+                state['first_lang'] = selected_lang_code
+                
+                first_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[selected_lang_code]
+                first_flag = self._get_language_flag(selected_lang_code)
+                
+                # Create keyboard for second language (excluding first language)
+                keyboard = self._create_language_keyboard(exclude_lang=selected_lang_code)
+                
+                text = f"✅ *First language selected: {first_flag} {first_lang_name}*\n\nNow choose your second language:"
+                self.send_keyboard(chat_id, text, keyboard)
+                
+            elif state['step'] == 'second_lang':
+                # Second language selected, complete the pair
+                first_lang = state['first_lang']
+                second_lang = selected_lang_code
+                
+                if self.set_user_language_pair(user_id, first_lang, second_lang):
+                    first_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[first_lang]
+                    second_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[second_lang]
+                    first_flag = self._get_language_flag(first_lang)
+                    second_flag = self._get_language_flag(second_lang)
+                    
+                    response = f"✅ *Language pair set to {first_flag} {first_lang_name} ↔ {second_flag} {second_lang_name}*\n\nNow send me any message and I'll translate between these languages!"
+                    self.send_message(chat_id, response)
+                else:
+                    self.send_message(chat_id, "❌ Failed to set language pair. Please try again.")
+                
+                # Clear selection state
+                del self.language_selection_state[user_id]
+        
+        # Handle legacy language pair selection (for backward compatibility)
+        elif '|' in data:  # Format: "flag1|flag2"
             flag1, flag2 = data.split('|')
             
             # Map flag emojis back to language codes
@@ -178,7 +281,33 @@ class TelegramBot:
                 '\U0001F1F5\U0001F1F1': 'pl',  # 🇵🇱
                 '\U0001F1E8\U0001F1FF': 'cs',  # 🇨🇿
                 '\U0001F1F3\U0001F1F1': 'nl',  # 🇳🇱
-                '\U0001F1F8\U0001F1EA': 'sv'   # 🇸🇪
+                '\U0001F1F8\U0001F1EA': 'sv',  # 🇸🇪
+                '\U0001F1F5\U0001F1F9': 'pt',  # 🇵🇹
+                '\U0001F1F9\U0001F1F7': 'tr',  # 🇹🇷
+                '\U0001F1E9\U0001F1F0': 'da',  # 🇩🇰
+                '\U0001F1F3\U0001F1F4': 'no',  # 🇳🇴
+                '\U0001F1EB\U0001F1EE': 'fi',  # 🇫🇮
+                '\U0001F1EC\U0001F1F7': 'el',  # 🇬🇷
+                '\U0001F1EE\U0001F1F1': 'he',  # 🇮🇱
+                '\U0001F1FB\U0001F1F3': 'vi',  # 🇻🇳
+                '\U0001F1EE\U0001F1E9': 'id',  # 🇮🇩
+                '\U0001F1F2\U0001F1FE': 'ms',  # 🇲🇾
+                '\U0001F1F5\U0001F1ED': 'tl',  # 🇵🇭
+                '\U0001F1FA\U0001F1E6': 'uk',  # 🇺🇦
+                '\U0001F1F8\U0001F1F0': 'sk',  # 🇸🇰
+                '\U0001F1ED\U0001F1FA': 'hu',  # 🇭🇺
+                '\U0001F1F7\U0001F1F4': 'ro',  # 🇷🇴
+                '\U0001F1E7\U0001F1EC': 'bg',  # 🇧🇬
+                '\U0001F1ED\U0001F1F7': 'hr',  # 🇭🇷
+                '\U0001F1F7\U0001F1F8': 'sr',  # 🇷🇸
+                '\U0001F1F8\U0001F1EE': 'sl',  # 🇸🇮
+                '\U0001F1EA\U0001F1EA': 'et',  # 🇪🇪
+                '\U0001F1F1\U0001F1FB': 'lv',  # 🇱🇻
+                '\U0001F1F1\U0001F1F9': 'lt',  # 🇱🇹
+                '\U0001F1EE\U0001F1F7': 'fa',  # 🇮🇷
+                '\U0001F1F5\U0001F1F0': 'ur',  # 🇵🇰
+                '\U0001F1E7\U0001F1E9': 'bn',  # 🇧🇩
+                '\U0001F1F1\U0001F1F0': 'si'   # 🇱🇰
             }
             
             lang1 = flag_to_lang.get(flag1)
@@ -244,35 +373,13 @@ _Need help? Just ask!_ 💬
             self.send_message(chat_id, help_text)
             
         elif cmd == '/setpair':
-            # Show popular language pairs
-            popular_pairs = [
-                ['🇹🇭 Thai ↔ 🇷🇺 Russian', '🇨🇳 Chinese ↔ 🇺🇸 English'],
-                ['🇪🇸 Spanish ↔ 🇫🇷 French', '🇩🇪 German ↔ 🇮🇹 Italian'],
-                ['🇯🇵 Japanese ↔ 🇰🇷 Korean', '🇸🇦 Arabic ↔ 🇮🇳 Hindi'],
-                ['🇵🇱 Polish ↔ 🇨🇿 Czech', '🇳🇱 Dutch ↔ 🇸🇪 Swedish']
-            ]
+            # Start two-step language selection process
+            self.language_selection_state[user_id] = {'step': 'first_lang'}
             
-            # Map display names to flag emojis
-            pair_map = {
-                '🇹🇭 Thai ↔ 🇷🇺 Russian': '\U0001F1F9\U0001F1ED|\U0001F1F7\U0001F1FA',
-                '🇨🇳 Chinese ↔ 🇺🇸 English': '\U0001F1E8\U0001F1F3|\U0001F1FA\U0001F1F8',
-                '🇪🇸 Spanish ↔ 🇫🇷 French': '\U0001F1EA\U0001F1F8|\U0001F1EB\U0001F1F7',
-                '🇩🇪 German ↔ 🇮🇹 Italian': '\U0001F1E9\U0001F1EA|\U0001F1EE\U0001F1F9',
-                '🇯🇵 Japanese ↔ 🇰🇷 Korean': '\U0001F1EF\U0001F1F5|\U0001F1F0\U0001F1F7',
-                '🇸🇦 Arabic ↔ 🇮🇳 Hindi': '\U0001F1F8\U0001F1E6|\U0001F1EE\U0001F1F3',
-                '🇵🇱 Polish ↔ 🇨🇿 Czech': '\U0001F1F5\U0001F1F1|\U0001F1E8\U0001F1FF',
-                '🇳🇱 Dutch ↔ 🇸🇪 Swedish': '\U0001F1F3\U0001F1F1|\U0001F1F8\U0001F1EA'
-            }
+            # Create keyboard with all available languages
+            keyboard = self._create_language_keyboard()
             
-            # Convert to callback data
-            keyboard = []
-            for row in popular_pairs:
-                keyboard_row = []
-                for pair_display in row:
-                    keyboard_row.append(pair_map.get(pair_display, pair_display))
-                keyboard.append(keyboard_row)
-            
-            text = "🌍 *Choose your language pair:*\n\nClick on your preferred language pair below:"
+            text = "🌍 *Step 1: Choose your first language*\n\nSelect the first language for your translation pair:"
             self.send_keyboard(chat_id, text, keyboard)
             
         elif cmd == '/languages':
