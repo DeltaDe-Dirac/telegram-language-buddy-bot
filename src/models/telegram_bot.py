@@ -46,7 +46,7 @@ class TelegramBot:
             logger.error(f"Failed to send message: {e}")
             return False
     
-    def send_keyboard(self, chat_id: int, text: str, keyboard: List[List[str]]) -> bool:
+    def send_keyboard(self, chat_id: int, text: str, keyboard: List[List]) -> bool:
         """Send message with inline keyboard"""
         try:
             url = f"{self.base_url}/sendMessage"
@@ -56,9 +56,17 @@ class TelegramBot:
             for row in keyboard:
                 inline_row = []
                 for button in row:
+                    if isinstance(button, tuple):
+                        # New format: (display_text, callback_data)
+                        display_text, callback_data = button
+                    else:
+                        # Legacy format: just text
+                        display_text = button
+                        callback_data = button.lower()
+                    
                     inline_row.append({
-                        'text': button,
-                        'callback_data': button.lower()
+                        'text': display_text,
+                        'callback_data': callback_data
                     })
                 inline_keyboard.append(inline_row)
             
@@ -97,7 +105,7 @@ class TelegramBot:
             self.user_stats[user_id] = {'translations': 0, 'joined': datetime.now()}
         self.user_stats[user_id]['translations'] += 1
     
-    def _create_language_keyboard(self, exclude_lang: str = None) -> List[List[str]]:
+    def _create_language_keyboard(self, exclude_lang: str = None) -> List[List[tuple]]:
         """Create keyboard with all available languages"""
         languages = list(LanguageDetector.SUPPORTED_LANGUAGES.items())
         
@@ -112,7 +120,7 @@ class TelegramBot:
             # Create button text with flag emoji and language name
             flag_emoji = self._get_language_flag(code)
             button_text = f"{flag_emoji} {name}"
-            row.append(button_text)
+            row.append((button_text, code))  # (display_text, callback_data)
             
             if len(row) == 3:
                 keyboard.append(row)
@@ -143,7 +151,7 @@ class TelegramBot:
         # Remove flag emoji and get language name
         parts = button_text.split(' ', 1)
         if len(parts) != 2:
-            return ''
+            return None
         
         lang_name = parts[1]
         
@@ -152,7 +160,7 @@ class TelegramBot:
             if name == lang_name:
                 return code
         
-        return ''
+        return None
     
     def process_message(self, update: Dict) -> None:
         """Process incoming Telegram message"""
@@ -221,7 +229,13 @@ class TelegramBot:
         # Handle two-step language selection
         if user_id in self.language_selection_state:
             state = self.language_selection_state[user_id]
-            selected_lang_code = self._get_language_code_from_button(data)
+            
+            # Check if data is a direct language code
+            if data in LanguageDetector.SUPPORTED_LANGUAGES:
+                selected_lang_code = data
+            else:
+                # Fallback to parsing button text (for legacy compatibility)
+                selected_lang_code = self._get_language_code_from_button(data)
             
             if not selected_lang_code:
                 self.send_message(chat_id, "❌ Invalid language selection. Please try again.")
