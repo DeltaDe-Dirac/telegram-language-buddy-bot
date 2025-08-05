@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "Python: src.main (debug mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.main",
+            "justMyCode": false,
+            "env": {
+                "FLASK_ENV": "development"
+            }
+        },
+        {
+            "name": "Python: src.main (production mode)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.main",
+            "justMyCode": false,
+            "env": {
+                "FLASK_ENV": "production"
+            }
+        }
+    ]
+}
