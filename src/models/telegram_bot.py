@@ -18,7 +18,7 @@ class TelegramBot:
         self.translator = FreeTranslator()
         
         # In-memory storage (use database in production)
-        # user_preferences now stores language pairs: {user_id: (lang1, lang2)}
+        # user_preferences now stores language pairs: {user_id: (lang1, lang2)} or {chat_id: (lang1, lang2)}
         self.user_preferences = {}
         self.user_stats = {}
         
@@ -86,16 +86,20 @@ class TelegramBot:
             logger.error(f"Failed to send keyboard: {e}")
             return False
     
-    def get_user_language_pair(self, user_id: int) -> Tuple[str, str]:
-        """Get user's language pair"""
-        return self.user_preferences.get(user_id, ('en', 'ru'))
+    def get_user_language_pair(self, user_id: int, chat_id: int = None) -> Tuple[str, str]:
+        """Get user's language pair (supports both user and group chat preferences)"""
+        # For group chats, use chat_id; for private chats, use user_id
+        key = chat_id if chat_id and chat_id < 0 else user_id
+        return self.user_preferences.get(key, ('en', 'ru'))
     
-    def set_user_language_pair(self, user_id: int, lang1: str, lang2: str) -> bool:
-        """Set user's language pair"""
+    def set_user_language_pair(self, user_id: int, lang1: str, lang2: str, chat_id: int = None) -> bool:
+        """Set user's language pair (supports both user and group chat preferences)"""
         if (LanguageDetector.is_valid_language(lang1) and 
             LanguageDetector.is_valid_language(lang2) and 
             lang1 != lang2):
-            self.user_preferences[user_id] = (lang1.lower(), lang2.lower())
+            # For group chats, use chat_id; for private chats, use user_id
+            key = chat_id if chat_id and chat_id < 0 else user_id
+            self.user_preferences[key] = (lang1.lower(), lang2.lower())
             return True
         return False
     
@@ -188,16 +192,16 @@ class TelegramBot:
             return
         
         # Regular message - translate it
-        lang1, lang2 = self.get_user_language_pair(user_id)
+        lang1, lang2 = self.get_user_language_pair(user_id, chat_id)
         detected_lang = self.translator.detect_language(text)
         
-        # Determine target language based on detected language
+        # Determine target language based on detected language and language pair
         if detected_lang == lang1:
             target_lang = lang2
         elif detected_lang == lang2:
             target_lang = lang1
         else:
-            # If detected language is neither of the pair, translate to lang2
+            # If detected language is neither of the pair, translate to lang2 (second language in pair)
             target_lang = lang2
         
         # Don't translate if already in target language
@@ -272,7 +276,7 @@ class TelegramBot:
         first_lang = state['first_lang']
         second_lang = selected_lang_code
         
-        if self.set_user_language_pair(user_id, first_lang, second_lang):
+        if self.set_user_language_pair(user_id, first_lang, second_lang, chat_id):
             self._send_language_pair_confirmation(chat_id, first_lang, second_lang)
         else:
             self.send_message(chat_id, "❌ Failed to set language pair. Please try again.")
@@ -295,7 +299,7 @@ class TelegramBot:
         lang1 = self._get_language_from_flag(flag1)
         lang2 = self._get_language_from_flag(flag2)
         
-        if lang1 and lang2 and self.set_user_language_pair(user_id, lang1, lang2):
+        if lang1 and lang2 and self.set_user_language_pair(user_id, lang1, lang2, chat_id):
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES[lang1]
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES[lang2]
             response = f"✅ *Language pair set to {lang1_name} ↔ {lang2_name}*\n\nNow send me any message and I'll translate between these languages!"
@@ -371,6 +375,11 @@ I help you communicate between two languages! Set up your language pair once and
 2. Send me any text message
 3. I'll translate between your languages automatically!
 
+*Group Chat Support:*
+• Language pairs are saved per chat
+• Works in both private and group chats
+• Each group maintains its own language pair
+
 _Just send me a message to get started!_ 🚀
             """
             self.send_message(chat_id, welcome_text)
@@ -397,6 +406,7 @@ _Just send me a message to get started!_ 🚀
 • I support 40+ languages
 • Works with any text length
 • Free and unlimited!
+• Works in both private and group chats
 
 _Need help? Just ask!_ 💬
             """
@@ -419,7 +429,7 @@ _Need help? Just ask!_ 💬
             
         elif cmd == '/stats':
             stats = self.user_stats.get(user_id, {'translations': 0})
-            current_pair = self.get_user_language_pair(user_id)
+            current_pair = self.get_user_language_pair(user_id, chat_id)
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])
             
