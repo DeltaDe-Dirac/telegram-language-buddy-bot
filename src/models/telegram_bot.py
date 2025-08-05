@@ -158,9 +158,33 @@ class TelegramBot:
         data = callback_query['data']
         
         # Handle language pair selection
-        if '|' in data:  # Format: "lang1|lang2"
-            lang1, lang2 = data.split('|')
-            if self.set_user_language_pair(user_id, lang1, lang2):
+        if '|' in data:  # Format: "flag1|flag2"
+            flag1, flag2 = data.split('|')
+            
+            # Map flag emojis back to language codes
+            flag_to_lang = {
+                '\U0001F1F9\U0001F1ED': 'th',  # 🇹🇭
+                '\U0001F1F7\U0001F1FA': 'ru',  # 🇷🇺
+                '\U0001F1E8\U0001F1F3': 'zh',  # 🇨🇳
+                '\U0001F1FA\U0001F1F8': 'en',  # 🇺🇸
+                '\U0001F1EA\U0001F1F8': 'es',  # 🇪🇸
+                '\U0001F1EB\U0001F1F7': 'fr',  # 🇫🇷
+                '\U0001F1E9\U0001F1EA': 'de',  # 🇩🇪
+                '\U0001F1EE\U0001F1F9': 'it',  # 🇮🇹
+                '\U0001F1EF\U0001F1F5': 'ja',  # 🇯🇵
+                '\U0001F1F0\U0001F1F7': 'ko',  # 🇰🇷
+                '\U0001F1F8\U0001F1E6': 'ar',  # 🇸🇦
+                '\U0001F1EE\U0001F1F3': 'hi',  # 🇮🇳
+                '\U0001F1F5\U0001F1F1': 'pl',  # 🇵🇱
+                '\U0001F1E8\U0001F1FF': 'cs',  # 🇨🇿
+                '\U0001F1F3\U0001F1F1': 'nl',  # 🇳🇱
+                '\U0001F1F8\U0001F1EA': 'sv'   # 🇸🇪
+            }
+            
+            lang1 = flag_to_lang.get(flag1)
+            lang2 = flag_to_lang.get(flag2)
+            
+            if lang1 and lang2 and self.set_user_language_pair(user_id, lang1, lang2):
                 lang1_name = LanguageDetector.SUPPORTED_LANGUAGES[lang1]
                 lang2_name = LanguageDetector.SUPPORTED_LANGUAGES[lang2]
                 response = f"✅ *Language pair set to {lang1_name} ↔ {lang2_name}*\n\nNow send me any message and I'll translate between these languages!"
@@ -228,16 +252,16 @@ _Need help? Just ask!_ 💬
                 ['🇵🇱 Polish ↔ 🇨🇿 Czech', '🇳🇱 Dutch ↔ 🇸🇪 Swedish']
             ]
             
-            # Map display names to language codes
+            # Map display names to flag emojis
             pair_map = {
-                '🇹🇭 Thai ↔ 🇷🇺 Russian': 'th|ru',
-                '🇨🇳 Chinese ↔ 🇺🇸 English': 'zh|en',
-                '🇪🇸 Spanish ↔ 🇫🇷 French': 'es|fr',
-                '🇩🇪 German ↔ 🇮🇹 Italian': 'de|it',
-                '🇯🇵 Japanese ↔ 🇰🇷 Korean': 'ja|ko',
-                '🇸🇦 Arabic ↔ 🇮🇳 Hindi': 'ar|hi',
-                '🇵🇱 Polish ↔ 🇨🇿 Czech': 'pl|cs',
-                '🇳🇱 Dutch ↔ 🇸🇪 Swedish': 'nl|sv'
+                '🇹🇭 Thai ↔ 🇷🇺 Russian': '\U0001F1F9\U0001F1ED|\U0001F1F7\U0001F1FA',
+                '🇨🇳 Chinese ↔ 🇺🇸 English': '\U0001F1E8\U0001F1F3|\U0001F1FA\U0001F1F8',
+                '🇪🇸 Spanish ↔ 🇫🇷 French': '\U0001F1EA\U0001F1F8|\U0001F1EB\U0001F1F7',
+                '🇩🇪 German ↔ 🇮🇹 Italian': '\U0001F1E9\U0001F1EA|\U0001F1EE\U0001F1F9',
+                '🇯🇵 Japanese ↔ 🇰🇷 Korean': '\U0001F1EF\U0001F1F5|\U0001F1F0\U0001F1F7',
+                '🇸🇦 Arabic ↔ 🇮🇳 Hindi': '\U0001F1F8\U0001F1E6|\U0001F1EE\U0001F1F3',
+                '🇵🇱 Polish ↔ 🇨🇿 Czech': '\U0001F1F5\U0001F1F1|\U0001F1E8\U0001F1FF',
+                '🇳🇱 Dutch ↔ 🇸🇪 Swedish': '\U0001F1F3\U0001F1F1|\U0001F1F8\U0001F1EA'
             }
             
             # Convert to callback data
