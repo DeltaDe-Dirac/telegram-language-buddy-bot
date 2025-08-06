@@ -90,6 +90,7 @@ class TelegramBot:
         """Get user's language pair (supports both user and group chat preferences)"""
         # For group chats, use chat_id; for private chats, use user_id
         key = chat_id if chat_id and chat_id < 0 else user_id
+        logger.info(f"Retrieving language preferences by key {key}")
         return self.user_preferences.get(key, ('en', 'ru'))
     
     def set_user_language_pair(self, user_id: int, lang1: str, lang2: str, chat_id: int = None) -> bool:
@@ -197,7 +198,7 @@ class TelegramBot:
         
         # Regular message - translate it
         lang1, lang2 = self.get_user_language_pair(user_id, chat_id)
-        logger.info(f"User {user_id} has language pair {lang1} and {lang2} in chat {chat_id}")
+        logger.info(f"User {user_id} has language pair {lang1}-{lang2} in chat {chat_id}")
         detected_lang = self.translator.detect_language(text)
         
         # Determine target language based on detected language and language pair
@@ -435,6 +436,7 @@ _Need help? Just ask!_ 💬
         elif cmd == '/stats':
             stats = self.user_stats.get(user_id, {'translations': 0})
             current_pair = self.get_user_language_pair(user_id, chat_id)
+            logger.info(f"User {user_id} has language pair {current_pair[0]}-{current_pair[1]} in chat {chat_id}")
             logger.info(f"All preferences: {self.user_preferences}")
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])
