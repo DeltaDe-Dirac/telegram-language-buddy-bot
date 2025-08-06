@@ -46,6 +46,7 @@ A smart translation bot that provides instant language conversion using Google T
    ```cmd
    set TELEGRAM_BOT_TOKEN=your_bot_token_here
    set FLASK_ENV=development
+   set PORT=5000
    ```
 
 5. **Run the bot**
@@ -78,6 +79,7 @@ A smart translation bot that provides instant language conversion using Google T
    ```bash
    export TELEGRAM_BOT_TOKEN=your_bot_token_here
    export FLASK_ENV=development
+   export PORT=5000
    ```
 
 5. **Run the bot**
@@ -103,12 +105,14 @@ Or set them directly in your shell:
 ```cmd
 set TELEGRAM_BOT_TOKEN=your_bot_token_here
 set FLASK_ENV=development
+set PORT=5000
 ```
 
 **Linux/macOS:**
 ```bash
 export TELEGRAM_BOT_TOKEN=your_bot_token_here
 export FLASK_ENV=development
+export PORT=5000
 ```
 
 **Required Environment Variables:**
