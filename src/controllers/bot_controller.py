@@ -56,7 +56,7 @@ def webhook():
         get_bot().process_message(update)
         return jsonify({"ok": True})
         
-    except Exception as e:
+    except (ValueError, TypeError, KeyError) as e:
         logger.error(f"Webhook error: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -75,7 +75,7 @@ def set_webhook():
         
         return jsonify(result)
         
-    except Exception as e:
+    except (requests.RequestException, ValueError, KeyError) as e:
         return jsonify({"error": str(e)}), 500
 
 def manual_translate():
@@ -100,7 +100,7 @@ def manual_translate():
             "language_pair": f"{lang1} ↔ {lang2}"
         })
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError) as e:
         return jsonify({"error": str(e)}), 500
 
 def get_stats():
@@ -132,5 +132,5 @@ def get_stats():
             }
         })
         
-    except Exception as e:
+    except (AttributeError, KeyError, TypeError) as e:
         return jsonify({"error": str(e)}), 500 

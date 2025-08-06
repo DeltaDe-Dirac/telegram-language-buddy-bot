@@ -9,6 +9,9 @@ from .free_translator import FreeTranslator
 
 logger = logging.getLogger(__name__)
 
+# Constants
+REQUEST_TIMEOUT = 10
+
 class TelegramBot:
     """Telegram Bot API integration"""
     
@@ -23,7 +26,7 @@ class TelegramBot:
         self.user_stats = {}
         
         # State management for two-step language selection
-        # {user_id: {'step': 'first_lang' or 'second_lang', 'first_lang': 'lang_code'}}
+        # {(instance_id, chat_id): {'step': 'first_lang' or 'second_lang', 'first_lang': 'lang_code'}}
         self.language_selection_state = {}
         
         self.instance_id = id(self)
@@ -42,10 +45,10 @@ class TelegramBot:
                 'parse_mode': parse_mode
             }
             
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
             return response.status_code == 200
             
-        except Exception as e:
+        except (requests.RequestException, requests.Timeout) as e:
             logger.error(f"Failed to send message: {e}")
             return False
     
@@ -82,10 +85,10 @@ class TelegramBot:
                 }
             }
             
-            response = requests.post(url, json=payload, timeout=10)
+            response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
             return response.status_code == 200
             
-        except Exception as e:
+        except (requests.RequestException, requests.Timeout) as e:
             logger.error(f"Failed to send keyboard: {e}")
             return False
     
@@ -181,7 +184,7 @@ class TelegramBot:
             elif 'callback_query' in update:
                 self._handle_callback_query(update['callback_query'])
                 
-        except Exception as e:
+        except (KeyError, ValueError, TypeError) as e:
             logger.error(f"Error processing update: {e}")
     
     def _handle_message(self, message: Dict) -> None:
@@ -235,19 +238,18 @@ class TelegramBot:
     def _handle_callback_query(self, callback_query: Dict) -> None:
         """Handle inline keyboard callback"""
         chat_id = callback_query['message']['chat']['id']
-        user_id = callback_query['from']['id']
         data = callback_query['data']
         
         # Handle two-step language selection
-        if user_id in self.language_selection_state:
-            self._handle_language_selection(chat_id, user_id, data)
+        if (self.instance_id, chat_id) in self.language_selection_state:
+            self._handle_language_selection(chat_id, data)
         # Handle legacy language pair selection (for backward compatibility)
         elif '|' in data:  # Format: "flag1|flag2"
             self._handle_legacy_language_selection(chat_id, data)
     
-    def _handle_language_selection(self, chat_id: int, user_id: int, data: str) -> None:
+    def _handle_language_selection(self, chat_id: int, data: str) -> None:
         """Handle two-step language selection process"""
-        state = self.language_selection_state[user_id]
+        state = self.language_selection_state[(self.instance_id, chat_id)]
         selected_lang_code = self._extract_language_code(data)
         
         if not selected_lang_code:
@@ -255,9 +257,9 @@ class TelegramBot:
             return
         
         if state['step'] == 'first_lang':
-            self._handle_first_language_selection(chat_id, user_id, selected_lang_code)
+            self._handle_first_language_selection(chat_id, selected_lang_code)
         elif state['step'] == 'second_lang':
-            self._handle_second_language_selection(chat_id, user_id, selected_lang_code)
+            self._handle_second_language_selection(chat_id, selected_lang_code)
     
     def _extract_language_code(self, data: str) -> str | None:
         """Extract language code from callback data"""
@@ -265,9 +267,9 @@ class TelegramBot:
             return data
         return self._get_language_code_from_button(data)
     
-    def _handle_first_language_selection(self, chat_id: int, user_id: int, selected_lang_code: str) -> None:
+    def _handle_first_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
         """Handle first language selection in two-step process"""
-        state = self.language_selection_state[user_id]
+        state = self.language_selection_state[(self.instance_id, chat_id)]
         state['step'] = 'second_lang'
         state['first_lang'] = selected_lang_code
         
@@ -278,9 +280,9 @@ class TelegramBot:
         text = f"✅ *First language selected: {first_flag} {first_lang_name}*\n\nNow choose your second language:"
         self.send_keyboard(chat_id, text, keyboard)
     
-    def _handle_second_language_selection(self, chat_id: int, user_id: int, selected_lang_code: str) -> None:
+    def _handle_second_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
         """Handle second language selection in two-step process"""
-        state = self.language_selection_state[user_id]
+        state = self.language_selection_state[(self.instance_id, chat_id)]
         first_lang = state['first_lang']
         second_lang = selected_lang_code
         
@@ -289,7 +291,7 @@ class TelegramBot:
         else:
             self.send_message(chat_id, "❌ Failed to set language pair. Please try again.")
         
-        del self.language_selection_state[user_id]
+        del self.language_selection_state[(self.instance_id, chat_id)]
     
     def _send_language_pair_confirmation(self, chat_id: int, first_lang: str, second_lang: str) -> None:
         """Send confirmation message for language pair setup"""
@@ -422,7 +424,7 @@ _Need help? Just ask!_ 💬
             
         elif cmd == '/setpair':
             # Start two-step language selection process
-            self.language_selection_state[user_id] = {'step': 'first_lang'}
+            self.language_selection_state[(self.instance_id, chat_id)] = {'step': 'first_lang'}
             
             # Create keyboard with all available languages
             keyboard = self._create_language_keyboard()
