@@ -18,7 +18,7 @@ class TelegramBot:
         self.translator = FreeTranslator()
         
         # In-memory storage (use database in production)
-        # user_preferences now stores language pairs: {chat_id: (lang1, lang2)}
+        # user_preferences now stores language pairs: {(instance_id, chat_id): (lang1, lang2)}
         self.user_preferences = {}
         self.user_stats = {}
         
@@ -26,7 +26,8 @@ class TelegramBot:
         # {user_id: {'step': 'first_lang' or 'second_lang', 'first_lang': 'lang_code'}}
         self.language_selection_state = {}
         
-        logger.info(f"TelegramBot instance created with ID: {id(self)}")
+        self.instance_id = id(self)
+        logger.info(f"TelegramBot instance created with ID: {self.instance_id}")
         
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
@@ -90,8 +91,8 @@ class TelegramBot:
     
     def get_user_language_pair(self, chat_id: int) -> Tuple[str, str]:
         """Get chat's language pair (always use chat_id)"""
-        logger.info(f"Retrieving language preferences by key {chat_id} from instance {id(self)}")
-        result = self.user_preferences.get(chat_id, ('en', 'ru'))
+        logger.info(f"Retrieving language preferences by key {chat_id} from instance {self.instance_id}")
+        result = self.user_preferences.get((self.instance_id, chat_id), ('en', 'ru'))
         logger.info(f"User {chat_id} has language pair {result[0]}-{result[1]} in chat {chat_id}")
         return result
     
@@ -101,8 +102,8 @@ class TelegramBot:
         if (LanguageDetector.is_valid_language(lang1) and 
             LanguageDetector.is_valid_language(lang2) and 
             lang1 != lang2):
-            self.user_preferences[chat_id] = (lang1.lower(), lang2.lower())
-            logger.info(f"Language pair set to {lang1} and {lang2} in chat {chat_id} on instance {id(self)}")
+            self.user_preferences[(self.instance_id, chat_id)] = (lang1.lower(), lang2.lower())
+            logger.info(f"Language pair set to {lang1} and {lang2} in chat {chat_id} on instance {self.instance_id}")
             logger.info(f"All preferences after set: {self.user_preferences}")
             return True
 
@@ -437,7 +438,7 @@ _Need help? Just ask!_ 💬
         elif cmd == '/stats':
             stats = self.user_stats.get(user_id, {'translations': 0})
             current_pair = self.get_user_language_pair(chat_id)
-            logger.info(f"Chat {chat_id} has language pair {current_pair[0]}-{current_pair[1]} on instance {id(self)}")
+            logger.info(f"Chat {chat_id} has language pair {current_pair[0]}-{current_pair[1]} on instance {self.instance_id}")
             logger.info(f"All preferences: {self.user_preferences}")
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])
