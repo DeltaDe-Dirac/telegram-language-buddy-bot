@@ -124,7 +124,9 @@ def get_stats():
             "preferences_by_chat": {
                 str(chat_id): lang_pair 
                 for chat_id, lang_pair in bot.user_preferences.items()
-            }
+            },
+            "storage_type": "file-based",
+            "preferences_file": "language_preferences.json"
         })
         
     except (AttributeError, KeyError, TypeError) as e:

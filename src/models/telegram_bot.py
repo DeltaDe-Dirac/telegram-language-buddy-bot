@@ -1,8 +1,10 @@
 import os
+import json
 import requests
 import logging
 from typing import Dict, List, Tuple
 from datetime import datetime
+from pathlib import Path
 
 from .language_detector import LanguageDetector
 from .free_translator import FreeTranslator
@@ -11,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 REQUEST_TIMEOUT = 10
+PREFERENCES_FILE = os.path.join(os.getcwd(), "language_preferences.json")
 
 class TelegramBot:
     """Telegram Bot API integration"""
@@ -29,9 +32,8 @@ class TelegramBot:
         self.base_url = f"https://api.telegram.org/bot{self.token}"
         self.translator = FreeTranslator()
         
-        # In-memory storage (use database in production)
-        # user_preferences now stores language pairs: {chat_id: (lang1, lang2)}
-        self.user_preferences = {}
+        # Load preferences from file
+        self.user_preferences = self._load_preferences()
         self.user_stats = {}
         
         # State management for two-step language selection
@@ -40,6 +42,35 @@ class TelegramBot:
         
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
+    
+    def _load_preferences(self) -> Dict[int, Tuple[str, str]]:
+        """Load language preferences from file"""
+        try:
+            if os.path.exists(PREFERENCES_FILE):
+                with open(PREFERENCES_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # Convert string keys back to integers
+                    preferences = {int(k): tuple(v) for k, v in data.items()}
+                    logger.info(f"Loaded {len(preferences)} language preferences from file")
+                    return preferences
+        except (IOError, ValueError) as e:
+            logger.warning(f"Could not load preferences from file {PREFERENCES_FILE}: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error loading preferences: {e}")
+        return {}
+    
+    def _save_preferences(self) -> None:
+        """Save language preferences to file"""
+        try:
+            # Convert integer keys to strings for JSON serialization
+            data = {str(k): list(v) for k, v in self.user_preferences.items()}
+            with open(PREFERENCES_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            logger.info(f"Saved {len(self.user_preferences)} language preferences to file")
+        except (IOError, TypeError) as e:
+            logger.error(f"Could not save preferences to file {PREFERENCES_FILE}: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error saving preferences: {e}")
     
     def answer_callback_query(self, callback_query_id: str, text: str = None) -> bool:
         """Answer callback query to remove loading state"""
@@ -131,6 +162,9 @@ class TelegramBot:
             self.user_preferences[chat_id] = (lang1.lower(), lang2.lower())
             logger.info(f"Language pair set to {lang1} and {lang2} in chat {chat_id}")
             logger.info(f"All preferences after set: {self.user_preferences}")
+            
+            # Save to file immediately
+            self._save_preferences()
             return True
 
         logger.warning(f"Language pair {lang1} and {lang2} was not set in chat {chat_id}")
