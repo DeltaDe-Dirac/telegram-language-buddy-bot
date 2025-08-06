@@ -232,14 +232,18 @@ class TelegramBot:
         lang1, lang2 = self.get_user_language_pair(chat_id)
         logger.info(f"Chat {chat_id} has language pair {lang1}-{lang2}")
         detected_lang = self.translator.detect_language(text)
+        logger.info(f"Detected language for text '{text[:20]}...': {detected_lang}")
         
         # Determine target language based on detected language and language pair
         if detected_lang == lang1:
             target_lang = lang2
+            logger.info(f"Translating {lang1} -> {lang2}")
         elif detected_lang == lang2:
             target_lang = lang1
+            logger.info(f"Translating {lang2} -> {lang1}")
         else:
             # Ignore translation if detected language is neither of the pair
+            logger.warning(f"Detected language '{detected_lang}' not in pair ({lang1}, {lang2}), ignoring translation")
             return
         
         # Don't translate if already in target language
