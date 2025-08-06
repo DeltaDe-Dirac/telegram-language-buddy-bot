@@ -10,6 +10,8 @@ A smart translation bot that provides instant language conversion using Google T
 - **Interactive Setup**: Easy `/setpair` command for language configuration
 - **Statistics Tracking**: Monitor translation usage and user activity
 - **Database Persistence**: SQLite for local development, PostgreSQL for production
+- **Webhook Support**: Handles Telegram webhooks for real-time messaging
+- **REST API**: Additional endpoints for manual translation and statistics
 
 ## 🚀 Quick Start
 
@@ -43,6 +45,7 @@ A smart translation bot that provides instant language conversion using Google T
 4. **Set up environment variables**
    ```cmd
    set TELEGRAM_BOT_TOKEN=your_bot_token_here
+   set FLASK_ENV=development
    ```
 
 5. **Run the bot**
@@ -74,6 +77,7 @@ A smart translation bot that provides instant language conversion using Google T
 4. **Set up environment variables**
    ```bash
    export TELEGRAM_BOT_TOKEN=your_bot_token_here
+   export FLASK_ENV=development
    ```
 
 5. **Run the bot**
@@ -89,6 +93,7 @@ Create a `.env` file in the project root:
 
 ```env
 TELEGRAM_BOT_TOKEN=your_bot_token_here
+FLASK_ENV=development
 DATABASE_URL=sqlite:///bot_data.db
 ```
 
@@ -97,16 +102,24 @@ Or set them directly in your shell:
 **Windows:**
 ```cmd
 set TELEGRAM_BOT_TOKEN=your_bot_token_here
+set FLASK_ENV=development
 ```
 
 **Linux/macOS:**
 ```bash
 export TELEGRAM_BOT_TOKEN=your_bot_token_here
+export FLASK_ENV=development
 ```
+
+**Required Environment Variables:**
+- `TELEGRAM_BOT_TOKEN` - Your Telegram bot token from @BotFather
+- `FLASK_ENV` - Set to 'development' for local work, 'production' for Heroku
+- `DATABASE_URL` - Database connection string (auto-configured)
+- `PORT` - Server port (auto-configured by Heroku)
 
 ## 🔧 Database
 
-The bot uses PostgreSQL on Heroku for persistent data storage:
+The bot uses SQLAlchemy with automatic database selection:
 
 ### Local Development
 
@@ -117,6 +130,8 @@ For local development, the bot automatically uses SQLite:
 python -m src.main
 ```
 
+The SQLite database file (`bot_data.db`) will be created in the project root.
+
 ### Heroku Deployment
 
 The bot automatically uses PostgreSQL on Heroku:
@@ -124,6 +139,7 @@ The bot automatically uses PostgreSQL on Heroku:
 - **Database**: PostgreSQL (Essential 0 plan, ~$5/month)
 - **Persistence**: Data persists across deployments
 - **Automatic Setup**: Database tables are created automatically
+- **Schema Management**: Automatic PostgreSQL schema fixes for chat_id columns
 
 **To view database logs:**
 ```bash
@@ -133,9 +149,10 @@ heroku logs --tail
 ## 📱 Bot Commands
 
 - `/start` - Welcome message and instructions
-- `/setpair` - Set your preferred language pair
+- `/setpair` - Set your preferred language pair (two-step process)
 - `/stats` - View translation statistics
 - `/help` - Show available commands
+- `/languages` - List all supported languages
 
 ## 🌐 Supported Languages
 
@@ -165,6 +182,16 @@ telegram-language-buddy-bot/
 └── README.md                    # This file
 ```
 
+## 🌐 API Endpoints
+
+The bot provides several REST API endpoints:
+
+- `GET /` - Health check and service status
+- `POST /webhook` - Telegram webhook handler
+- `POST /set_webhook` - Set Telegram webhook URL
+- `POST /translate` - Manual translation endpoint
+- `GET /stats` - Get bot statistics
+
 ## 🚀 Deployment
 
 ### Heroku Deployment
@@ -191,6 +218,7 @@ telegram-language-buddy-bot/
 4. **Set environment variables**
    ```bash
    heroku config:set TELEGRAM_BOT_TOKEN=your_bot_token_here
+   heroku config:set FLASK_ENV=production
    ```
 
 5. **Deploy**
@@ -237,22 +265,22 @@ For local development with webhooks, you can use ngrok:
    pip install googletrans==3.1.0a0
    ```
 
-2. **Database connection errors**
+3. **Database connection errors**
    ```bash
    # Database is automatically initialized when the bot starts
    python -m src.main
    ```
 
-3. **Language detection not working**
+4. **Language detection not working**
    - Check if the language is supported in `src/models/language_detector.py`
    - Verify the language code mapping in `src/models/free_translator.py`
 
-4. **Heroku deployment fails**
+5. **Heroku deployment fails**
    ```bash
    heroku logs --tail
    ```
 
-5. **Database connection issues**
+6. **Database connection issues**
    - Check if PostgreSQL addon is active: `heroku addons`
    - Verify DATABASE_URL is set: `heroku config`
    - View database logs: `heroku logs --tail`
