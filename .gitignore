@@ -206,7 +206,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Bot data files
+# Bot data files (local development only)
 bot_data.db
-backup_bot_data_*.db
-current_db_backup_*.db

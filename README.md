@@ -45,12 +45,7 @@ A smart translation bot that provides instant language conversion using Google T
    set TELEGRAM_BOT_TOKEN=your_bot_token_here
    ```
 
-5. **Initialize database**
-   ```cmd
-   python init_db.py
-   ```
-
-6. **Run the bot**
+5. **Run the bot**
    ```cmd
    python -m src.main
    ```
@@ -81,12 +76,7 @@ A smart translation bot that provides instant language conversion using Google T
    export TELEGRAM_BOT_TOKEN=your_bot_token_here
    ```
 
-5. **Initialize database**
-   ```bash
-   python init_db.py
-   ```
-
-6. **Run the bot**
+5. **Run the bot**
    ```bash
    python -m src.main
    ```
@@ -114,56 +104,30 @@ set TELEGRAM_BOT_TOKEN=your_bot_token_here
 export TELEGRAM_BOT_TOKEN=your_bot_token_here
 ```
 
-## 🔧 Database Management
+## 🔧 Database
 
-The bot includes a comprehensive database backup/restore system for local development:
+The bot uses PostgreSQL on Heroku for persistent data storage:
 
 ### Local Development
 
+For local development, the bot automatically uses SQLite:
+
 ```bash
-# List available backups
-python manage_db.py list
-
-# Create backup
-python manage_db.py backup
-
-# Restore from most recent backup
-python manage_db.py restore
-
-# Restore from specific backup
-python manage_db.py restore 2
+# Database is automatically initialized when you run the bot
+python -m src.main
 ```
 
 ### Heroku Deployment
 
-**Important**: Database management scripts (`manage_db.py`, `backup_db.py`) are for local development only. Heroku uses an ephemeral filesystem, so these scripts won't work on Heroku.
+The bot automatically uses PostgreSQL on Heroku:
 
-For Heroku, the bot automatically handles database persistence:
+- **Database**: PostgreSQL (Essential 0 plan, ~$5/month)
+- **Persistence**: Data persists across deployments
+- **Automatic Setup**: Database tables are created automatically
 
-1. **Automatic Backup/Restore**: The `Procfile` runs `restore_db.py && init_db.py` on each deployment
-2. **Database Persistence**: Uses SQLite locally, can be upgraded to PostgreSQL on Heroku
-
-**To upgrade to PostgreSQL on Heroku:**
-
-```bash
-# Add PostgreSQL addon
-heroku addons:create heroku-postgresql:mini
-
-# The bot will automatically use DATABASE_URL from Heroku
-```
-
-**To view Heroku database logs:**
+**To view database logs:**
 ```bash
 heroku logs --tail
-```
-
-**Current Limitation**: The current setup uses SQLite on Heroku, which gets wiped on each deployment. For production use, consider upgrading to PostgreSQL:
-
-```bash
-# Add PostgreSQL (recommended for production)
-heroku addons:create heroku-postgresql:mini
-
-# The bot will automatically detect and use PostgreSQL
 ```
 
 ## 📱 Bot Commands
@@ -196,11 +160,6 @@ telegram-language-buddy-bot/
 │   │   ├── language_detector.py # Language detection utilities
 │   │   └── telegram_bot.py      # Main bot logic
 │   └── main.py                  # Flask application entry point
-├── backup_db.py                 # Database backup script
-├── restore_db.py                # Database restore script
-├── manage_db.py                 # Database management interface
-├── init_db.py                   # Database initialization
-├── deploy.sh                    # Automated deployment script
 ├── requirements.txt             # Python dependencies
 ├── Procfile                     # Heroku deployment configuration
 └── README.md                    # This file
@@ -280,7 +239,8 @@ For local development with webhooks, you can use ngrok:
 
 2. **Database connection errors**
    ```bash
-   python init_db.py
+   # Database is automatically initialized when the bot starts
+   python -m src.main
    ```
 
 3. **Language detection not working**
@@ -292,11 +252,10 @@ For local development with webhooks, you can use ngrok:
    heroku logs --tail
    ```
 
-5. **Database management scripts not working on Heroku**
-   - These scripts are for local development only
-   - Heroku uses ephemeral filesystem
-   - Use `heroku logs --tail` to view database operations
-   - Consider upgrading to PostgreSQL: `heroku addons:create heroku-postgresql:mini`
+5. **Database connection issues**
+   - Check if PostgreSQL addon is active: `heroku addons`
+   - Verify DATABASE_URL is set: `heroku config`
+   - View database logs: `heroku logs --tail`
 
 ### Debug Mode
 
