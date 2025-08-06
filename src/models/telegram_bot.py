@@ -31,9 +31,7 @@ class TelegramBot:
         self.translator = FreeTranslator()
         self.db = DatabaseManager()
         
-        # State management for two-step language selection
-        # {chat_id: {'step': 'first_lang' or 'second_lang', 'first_lang': 'lang_code'}}
-        self.language_selection_state = {}
+        # State management for two-step language selection is now handled by database
         
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
@@ -313,7 +311,13 @@ class TelegramBot:
         invalid_state_message = self.ERROR_INVALID_STATE
         
         try:
-            state = self.language_selection_state[chat_id]
+            # Get state from database
+            state = self.db.get_language_selection_state(chat_id)
+            if not state:
+                logger.warning(f"No selection state found for chat {chat_id}")
+                self.send_message(chat_id, error_message)
+                return
+            
             selected_lang_code = self._extract_language_code(data)
             
             if not selected_lang_code:
@@ -330,14 +334,13 @@ class TelegramBot:
             else:
                 logger.error(f"Invalid state step for chat {chat_id}: {state['step']}")
                 self.send_message(chat_id, invalid_state_message)
-                del self.language_selection_state[chat_id]
+                self.db.clear_language_selection_state(chat_id)
                 
-        except (KeyError, ValueError, TypeError) as e:
+        except Exception as e:
             logger.error(f"Error in language selection for chat {chat_id}: {e}")
             self.send_message(chat_id, error_message)
             # Clean up the state to prevent further issues
-            if chat_id in self.language_selection_state:
-                del self.language_selection_state[chat_id]
+            self.db.clear_language_selection_state(chat_id)
     
     def _extract_language_code(self, data: str) -> str | None:
         """Extract language code from callback data"""
@@ -358,9 +361,11 @@ class TelegramBot:
         error_message = self.ERROR_USE_SETPAIR
         
         try:
-            state = self.language_selection_state[chat_id]
-            state['step'] = 'second_lang'
-            state['first_lang'] = selected_lang_code
+            # Update state in database
+            if not self.db.set_language_selection_state(chat_id, 'second_lang', selected_lang_code):
+                logger.error(f"Failed to update selection state for chat {chat_id}")
+                self.send_message(chat_id, error_message)
+                return
             
             first_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[selected_lang_code]
             first_flag = self._get_language_flag(selected_lang_code)
@@ -371,11 +376,10 @@ class TelegramBot:
             logger.info(f"First language selected for chat {chat_id}: {selected_lang_code}")
             self.send_keyboard(chat_id, text, keyboard)
             
-        except (KeyError, ValueError, TypeError) as e:
+        except Exception as e:
             logger.error(f"Error in first language selection for chat {chat_id}: {e}")
             self.send_message(chat_id, error_message)
-            if chat_id in self.language_selection_state:
-                del self.language_selection_state[chat_id]
+            self.db.clear_language_selection_state(chat_id)
     
     def _handle_second_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
         """Handle second language selection in two-step process"""
@@ -383,7 +387,14 @@ class TelegramBot:
         failed_message = self.ERROR_FAILED_SET_PAIR
         
         try:
-            state = self.language_selection_state[chat_id]
+            # Get current state from database
+            state = self.db.get_language_selection_state(chat_id)
+            if not state or not state.get('first_lang'):
+                logger.error(f"No valid state found for chat {chat_id}")
+                self.send_message(chat_id, error_message)
+                self.db.clear_language_selection_state(chat_id)
+                return
+            
             first_lang = state['first_lang']
             second_lang = selected_lang_code
             
@@ -395,14 +406,13 @@ class TelegramBot:
                 self.send_message(chat_id, failed_message)
             
             # Always clean up the state
-            del self.language_selection_state[chat_id]
+            self.db.clear_language_selection_state(chat_id)
             logger.info(f"Language selection completed for chat {chat_id}")
             
-        except (KeyError, ValueError, TypeError) as e:
+        except Exception as e:
             logger.error(f"Error in second language selection for chat {chat_id}: {e}")
             self.send_message(chat_id, error_message)
-            if chat_id in self.language_selection_state:
-                del self.language_selection_state[chat_id]
+            self.db.clear_language_selection_state(chat_id)
     
     def _send_language_pair_confirmation(self, chat_id: int, first_lang: str, second_lang: str) -> None:
         """Send confirmation message for language pair setup"""
@@ -535,12 +545,14 @@ _Need help? Just ask!_ 💬
             
         elif cmd == '/setpair':
             # Clean up any existing stale state for this chat
-            if chat_id in self.language_selection_state:
-                logger.info(f"Cleaning up existing language selection state for chat {chat_id}")
-                del self.language_selection_state[chat_id]
+            self.db.clear_language_selection_state(chat_id)
             
             # Start two-step language selection process
-            self.language_selection_state[chat_id] = {'step': 'first_lang'}
+            if not self.db.set_language_selection_state(chat_id, 'first_lang'):
+                logger.error(f"Failed to set initial selection state for chat {chat_id}")
+                self.send_message(chat_id, "❌ Failed to start language selection. Please try again.")
+                return
+            
             logger.info(f"Started language selection for chat {chat_id}")
             
             # Create keyboard with all available languages
