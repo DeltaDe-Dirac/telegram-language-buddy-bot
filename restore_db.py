@@ -16,8 +16,8 @@ def restore_database():
         backup_files = glob.glob('backup_bot_data_*.db')
         
         if not backup_files:
-            print("❌ No backup files found")
-            return False
+            print("ℹ️  No backup files found, will create fresh database")
+            return True  # Return True to continue with init_db.py
         
         # Get the most recent backup
         latest_backup = max(backup_files, key=os.path.getctime)

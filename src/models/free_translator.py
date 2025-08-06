@@ -82,6 +82,11 @@ class FreeTranslator:
             mapped_code = code_mapping.get(detected_code, detected_code)
             logger.info(f"googletrans detected '{detected_code}', mapped to '{mapped_code}'")
             
+            if detected_code != mapped_code:
+                logger.info(f"✅ Language code mapped: {detected_code} → {mapped_code}")
+            else:
+                logger.info(f"ℹ️  No mapping needed for: {detected_code}")
+            
             return mapped_code
         except Exception as e:
             logger.error(f"Language detection failed: {e}")
