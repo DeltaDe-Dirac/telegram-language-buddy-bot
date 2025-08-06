@@ -67,7 +67,22 @@ class FreeTranslator:
             from googletrans import Translator
             translator = Translator()
             detection = translator.detect(text)
-            return detection.lang
+            detected_code = detection.lang
+            
+            # Map googletrans language codes to our supported codes
+            code_mapping = {
+                'iw': 'he',  # googletrans returns 'iw' for Hebrew
+                'zh-cn': 'zh',  # Simplified Chinese
+                'zh-tw': 'zh',  # Traditional Chinese
+                'zh-hk': 'zh',  # Hong Kong Chinese
+                'zh-sg': 'zh',  # Singapore Chinese
+            }
+            
+            # Convert to our supported code if mapping exists
+            mapped_code = code_mapping.get(detected_code, detected_code)
+            logger.info(f"googletrans detected '{detected_code}', mapped to '{mapped_code}'")
+            
+            return mapped_code
         except Exception as e:
             logger.error(f"Language detection failed: {e}")
             return 'unknown' 
