@@ -52,8 +52,10 @@ A smart translation bot that provides instant language conversion using Google T
 
 6. **Run the bot**
    ```cmd
-   python src/main.py
+   python -m src.main
    ```
+   
+   **Note**: The bot must be run as a module (`python -m src.main`) because it uses relative imports. Running it directly as a script (`python src/main.py`) will cause import errors.
 
 #### Linux/macOS
 
@@ -86,8 +88,10 @@ A smart translation bot that provides instant language conversion using Google T
 
 6. **Run the bot**
    ```bash
-   python src/main.py
+   python -m src.main
    ```
+   
+   **Note**: The bot must be run as a module (`python -m src.main`) because it uses relative imports. Running it directly as a script (`python src/main.py`) will cause import errors.
 
 ### Environment Variables
 
@@ -112,7 +116,7 @@ export TELEGRAM_BOT_TOKEN=your_bot_token_here
 
 ## 🔧 Database Management
 
-The bot includes a comprehensive database backup/restore system:
+The bot includes a comprehensive database backup/restore system for local development:
 
 ### Local Development
 
@@ -132,17 +136,35 @@ python manage_db.py restore 2
 
 ### Heroku Deployment
 
-The bot automatically handles database persistence on Heroku:
+**Important**: Database management scripts (`manage_db.py`, `backup_db.py`) are for local development only. Heroku uses an ephemeral filesystem, so these scripts won't work on Heroku.
 
-1. **Backup before deployment**
-   ```bash
-   python backup_db.py
-   ```
+For Heroku, the bot automatically handles database persistence:
 
-2. **Deploy with backup**
-   ```bash
-   python deploy.sh
-   ```
+1. **Automatic Backup/Restore**: The `Procfile` runs `restore_db.py && init_db.py` on each deployment
+2. **Database Persistence**: Uses SQLite locally, can be upgraded to PostgreSQL on Heroku
+
+**To upgrade to PostgreSQL on Heroku:**
+
+```bash
+# Add PostgreSQL addon
+heroku addons:create heroku-postgresql:mini
+
+# The bot will automatically use DATABASE_URL from Heroku
+```
+
+**To view Heroku database logs:**
+```bash
+heroku logs --tail
+```
+
+**Current Limitation**: The current setup uses SQLite on Heroku, which gets wiped on each deployment. For production use, consider upgrading to PostgreSQL:
+
+```bash
+# Add PostgreSQL (recommended for production)
+heroku addons:create heroku-postgresql:mini
+
+# The bot will automatically detect and use PostgreSQL
+```
 
 ## 📱 Bot Commands
 
@@ -242,7 +264,16 @@ For local development with webhooks, you can use ngrok:
 
 ### Common Issues
 
-1. **"No module named 'googletrans'"**
+1. **Import errors when running the bot**
+   ```bash
+   # ❌ Wrong - will cause import errors
+   python src/main.py
+   
+   # ✅ Correct - run as module
+   python -m src.main
+   ```
+
+2. **"No module named 'googletrans'"**
    ```bash
    pip install googletrans==3.1.0a0
    ```
@@ -260,6 +291,12 @@ For local development with webhooks, you can use ngrok:
    ```bash
    heroku logs --tail
    ```
+
+5. **Database management scripts not working on Heroku**
+   - These scripts are for local development only
+   - Heroku uses ephemeral filesystem
+   - Use `heroku logs --tail` to view database operations
+   - Consider upgrading to PostgreSQL: `heroku addons:create heroku-postgresql:mini`
 
 ### Debug Mode
 
