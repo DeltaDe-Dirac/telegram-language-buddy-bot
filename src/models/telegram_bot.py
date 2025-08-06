@@ -94,13 +94,17 @@ class TelegramBot:
     
     def set_user_language_pair(self, user_id: int, lang1: str, lang2: str, chat_id: int = None) -> bool:
         """Set user's language pair (supports both user and group chat preferences)"""
+
         if (LanguageDetector.is_valid_language(lang1) and 
             LanguageDetector.is_valid_language(lang2) and 
             lang1 != lang2):
             # For group chats, use chat_id; for private chats, use user_id
             key = chat_id if chat_id and chat_id < 0 else user_id
             self.user_preferences[key] = (lang1.lower(), lang2.lower())
+            logger.info(f"User {user_id} set language pair to {lang1} and {lang2} in chat {chat_id}")
             return True
+
+        logger.warning(f"Language pair {lang1} and {lang2} was not set in chat {chat_id} or user {user_id}")
         return False
     
     def update_user_stats(self, user_id: int):
@@ -193,6 +197,7 @@ class TelegramBot:
         
         # Regular message - translate it
         lang1, lang2 = self.get_user_language_pair(user_id, chat_id)
+        logger.info(f"User {user_id} has language pair {lang1} and {lang2} in chat {chat_id}")
         detected_lang = self.translator.detect_language(text)
         
         # Determine target language based on detected language and language pair
@@ -201,8 +206,8 @@ class TelegramBot:
         elif detected_lang == lang2:
             target_lang = lang1
         else:
-            # If detected language is neither of the pair, translate to lang2 (second language in pair)
-            target_lang = lang2
+            # Ignore translation if detected language is neither of the pair
+            return
         
         # Don't translate if already in target language
         if detected_lang == target_lang:
@@ -430,6 +435,7 @@ _Need help? Just ask!_ 💬
         elif cmd == '/stats':
             stats = self.user_stats.get(user_id, {'translations': 0})
             current_pair = self.get_user_language_pair(user_id, chat_id)
+            logger.info(f"All preferences: {self.user_preferences}")
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])
             
