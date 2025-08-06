@@ -208,3 +208,5 @@ __marimo__/
 
 # Bot data files
 bot_data.db
+backup_bot_data_*.db
+current_db_backup_*.db
