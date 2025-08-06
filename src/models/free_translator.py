@@ -50,7 +50,8 @@ class FreeTranslator:
                 return None
             
             # Check if translation was cut off (common issue with googletrans)
-            if len(translated_text) < len(clean_text) * 0.3:  # Too short
+            # Only check for very short results that might indicate truncation
+            if len(translated_text) < 3:  # Too short to be meaningful
                 logger.warning("Google Translate result seems too short, might be cut off")
                 return None
                 
