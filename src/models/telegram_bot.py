@@ -242,7 +242,7 @@ class TelegramBot:
             self._handle_language_selection(chat_id, user_id, data)
         # Handle legacy language pair selection (for backward compatibility)
         elif '|' in data:  # Format: "flag1|flag2"
-            self._handle_legacy_language_selection(chat_id, user_id, data)
+            self._handle_legacy_language_selection(chat_id, data)
     
     def _handle_language_selection(self, chat_id: int, user_id: int, data: str) -> None:
         """Handle two-step language selection process"""
@@ -300,7 +300,7 @@ class TelegramBot:
         response = f"✅ *Language pair set to {first_flag} {first_lang_name} ↔ {second_flag} {second_lang_name}*\n\nNow send me any message and I'll translate between these languages!"
         self.send_message(chat_id, response)
     
-    def _handle_legacy_language_selection(self, chat_id: int, user_id: int, data: str) -> None:
+    def _handle_legacy_language_selection(self, chat_id: int, data: str) -> None:
         """Handle legacy language pair selection format"""
         flag1, flag2 = data.split('|')
         lang1 = self._get_language_from_flag(flag1)
