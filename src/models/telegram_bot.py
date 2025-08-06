@@ -15,25 +15,48 @@ REQUEST_TIMEOUT = 10
 class TelegramBot:
     """Telegram Bot API integration"""
     
+    # Common error messages to avoid duplication
+    ERROR_USE_SETPAIR = "❌ An error occurred. Please use /setpair to start over."
+    ERROR_INVALID_SELECTION = "❌ Invalid language selection. Please try again."
+    ERROR_INVALID_STATE = "❌ Invalid selection state. Please use /setpair to start over."
+    ERROR_FAILED_SET_PAIR = "❌ Failed to set language pair. Please try again."
+    ERROR_INVALID_CALLBACK = "❌ Invalid callback data. Please try again."
+    ERROR_PROCESSING_SELECTION = "❌ An error occurred while processing your selection. Please try again."
+    ERROR_PROCESSING_CALLBACK = "❌ Error processing selection"
+    
     def __init__(self):
         self.token = os.getenv('TELEGRAM_BOT_TOKEN')
         self.base_url = f"https://api.telegram.org/bot{self.token}"
         self.translator = FreeTranslator()
         
         # In-memory storage (use database in production)
-        # user_preferences now stores language pairs: {(instance_id, chat_id): (lang1, lang2)}
+        # user_preferences now stores language pairs: {chat_id: (lang1, lang2)}
         self.user_preferences = {}
         self.user_stats = {}
         
         # State management for two-step language selection
-        # {(instance_id, chat_id): {'step': 'first_lang' or 'second_lang', 'first_lang': 'lang_code'}}
+        # {chat_id: {'step': 'first_lang' or 'second_lang', 'first_lang': 'lang_code'}}
         self.language_selection_state = {}
-        
-        self.instance_id = id(self)
-        logger.info(f"TelegramBot instance created with ID: {self.instance_id}")
         
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
+    
+    def answer_callback_query(self, callback_query_id: str, text: str = None) -> bool:
+        """Answer callback query to remove loading state"""
+        try:
+            url = f"{self.base_url}/answerCallbackQuery"
+            payload = {
+                'callback_query_id': callback_query_id
+            }
+            if text:
+                payload['text'] = text
+            
+            response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+            return response.status_code == 200
+            
+        except (requests.RequestException, requests.Timeout) as e:
+            logger.error(f"Failed to answer callback query: {e}")
+            return False
     
     def send_message(self, chat_id: int, text: str, parse_mode: str = 'Markdown') -> bool:
         """Send message to Telegram chat"""
@@ -94,9 +117,9 @@ class TelegramBot:
     
     def get_user_language_pair(self, chat_id: int) -> Tuple[str, str]:
         """Get chat's language pair (always use chat_id)"""
-        logger.info(f"Retrieving language preferences by key {chat_id} from instance {self.instance_id}")
-        result = self.user_preferences.get((self.instance_id, chat_id), ('en', 'ru'))
-        logger.info(f"User {chat_id} has language pair {result[0]}-{result[1]} in chat {chat_id}")
+        logger.info(f"Retrieving language preferences for chat {chat_id}")
+        result = self.user_preferences.get(chat_id, ('en', 'ru'))
+        logger.info(f"Chat {chat_id} has language pair {result[0]}-{result[1]}")
         return result
     
     def set_user_language_pair(self, chat_id: int, lang1: str, lang2: str) -> bool:
@@ -105,8 +128,8 @@ class TelegramBot:
         if (LanguageDetector.is_valid_language(lang1) and 
             LanguageDetector.is_valid_language(lang2) and 
             lang1 != lang2):
-            self.user_preferences[(self.instance_id, chat_id)] = (lang1.lower(), lang2.lower())
-            logger.info(f"Language pair set to {lang1} and {lang2} in chat {chat_id} on instance {self.instance_id}")
+            self.user_preferences[chat_id] = (lang1.lower(), lang2.lower())
+            logger.info(f"Language pair set to {lang1} and {lang2} in chat {chat_id}")
             logger.info(f"All preferences after set: {self.user_preferences}")
             return True
 
@@ -237,29 +260,76 @@ class TelegramBot:
     
     def _handle_callback_query(self, callback_query: Dict) -> None:
         """Handle inline keyboard callback"""
-        chat_id = callback_query['message']['chat']['id']
-        data = callback_query['data']
-        
-        # Handle two-step language selection
-        if (self.instance_id, chat_id) in self.language_selection_state:
-            self._handle_language_selection(chat_id, data)
-        # Handle legacy language pair selection (for backward compatibility)
-        elif '|' in data:  # Format: "flag1|flag2"
-            self._handle_legacy_language_selection(chat_id, data)
+        try:
+            chat_id = callback_query['message']['chat']['id']
+            data = callback_query['data']
+            callback_query_id = callback_query['id']
+            
+            logger.info(f"Processing callback query for chat {chat_id} with data: {data}")
+            
+            # Answer the callback query immediately to remove loading state
+            self.answer_callback_query(callback_query_id)
+            
+            # Handle two-step language selection
+            if chat_id in self.language_selection_state:
+                logger.info(f"Found language selection state for chat {chat_id}: {self.language_selection_state[chat_id]}")
+                self._handle_language_selection(chat_id, data)
+            # Handle legacy language pair selection (for backward compatibility)
+            elif '|' in data:  # Format: "flag1|flag2"
+                logger.info(f"Handling legacy language selection for chat {chat_id}")
+                self._handle_legacy_language_selection(chat_id, data)
+            else:
+                logger.warning(f"Unknown callback data format for chat {chat_id}: {data}")
+                self.send_message(chat_id, self.ERROR_INVALID_CALLBACK)
+                
+        except SystemExit:
+            raise
+        except (KeyError, ValueError, TypeError) as e:
+            logger.error(f"Error handling callback query: {e}")
+            # Try to answer callback query and send error message if we can extract chat_id
+            try:
+                callback_query_id = callback_query.get('id')
+                if callback_query_id:
+                    self.answer_callback_query(callback_query_id, self.ERROR_PROCESSING_CALLBACK)
+                
+                chat_id = callback_query.get('message', {}).get('chat', {}).get('id')
+                if chat_id:
+                    self.send_message(chat_id, self.ERROR_PROCESSING_SELECTION)
+            except (KeyError, ValueError, TypeError):
+                pass
     
     def _handle_language_selection(self, chat_id: int, data: str) -> None:
         """Handle two-step language selection process"""
-        state = self.language_selection_state[(self.instance_id, chat_id)]
-        selected_lang_code = self._extract_language_code(data)
+        error_message = self.ERROR_USE_SETPAIR
+        invalid_selection_message = self.ERROR_INVALID_SELECTION
+        invalid_state_message = self.ERROR_INVALID_STATE
         
-        if not selected_lang_code:
-            self.send_message(chat_id, "❌ Invalid language selection. Please try again.")
-            return
-        
-        if state['step'] == 'first_lang':
-            self._handle_first_language_selection(chat_id, selected_lang_code)
-        elif state['step'] == 'second_lang':
-            self._handle_second_language_selection(chat_id, selected_lang_code)
+        try:
+            state = self.language_selection_state[chat_id]
+            selected_lang_code = self._extract_language_code(data)
+            
+            if not selected_lang_code:
+                logger.warning(f"Invalid language selection for chat {chat_id}: {data}")
+                self.send_message(chat_id, invalid_selection_message)
+                return
+            
+            logger.info(f"Processing language selection for chat {chat_id}: {selected_lang_code} (step: {state['step']})")
+            
+            if state['step'] == 'first_lang':
+                self._handle_first_language_selection(chat_id, selected_lang_code)
+            elif state['step'] == 'second_lang':
+                self._handle_second_language_selection(chat_id, selected_lang_code)
+            else:
+                logger.error(f"Invalid state step for chat {chat_id}: {state['step']}")
+                self.send_message(chat_id, invalid_state_message)
+                del self.language_selection_state[chat_id]
+                
+        except (KeyError, ValueError, TypeError) as e:
+            logger.error(f"Error in language selection for chat {chat_id}: {e}")
+            self.send_message(chat_id, error_message)
+            # Clean up the state to prevent further issues
+            if chat_id in self.language_selection_state:
+                del self.language_selection_state[chat_id]
     
     def _extract_language_code(self, data: str) -> str | None:
         """Extract language code from callback data"""
@@ -269,29 +339,54 @@ class TelegramBot:
     
     def _handle_first_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
         """Handle first language selection in two-step process"""
-        state = self.language_selection_state[(self.instance_id, chat_id)]
-        state['step'] = 'second_lang'
-        state['first_lang'] = selected_lang_code
+        error_message = self.ERROR_USE_SETPAIR
         
-        first_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[selected_lang_code]
-        first_flag = self._get_language_flag(selected_lang_code)
-        
-        keyboard = self._create_language_keyboard(exclude_lang=selected_lang_code)
-        text = f"✅ *First language selected: {first_flag} {first_lang_name}*\n\nNow choose your second language:"
-        self.send_keyboard(chat_id, text, keyboard)
+        try:
+            state = self.language_selection_state[chat_id]
+            state['step'] = 'second_lang'
+            state['first_lang'] = selected_lang_code
+            
+            first_lang_name = LanguageDetector.SUPPORTED_LANGUAGES[selected_lang_code]
+            first_flag = self._get_language_flag(selected_lang_code)
+            
+            keyboard = self._create_language_keyboard(exclude_lang=selected_lang_code)
+            text = f"✅ *First language selected: {first_flag} {first_lang_name}*\n\nNow choose your second language:"
+            
+            logger.info(f"First language selected for chat {chat_id}: {selected_lang_code}")
+            self.send_keyboard(chat_id, text, keyboard)
+            
+        except (KeyError, ValueError, TypeError) as e:
+            logger.error(f"Error in first language selection for chat {chat_id}: {e}")
+            self.send_message(chat_id, error_message)
+            if chat_id in self.language_selection_state:
+                del self.language_selection_state[chat_id]
     
     def _handle_second_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
         """Handle second language selection in two-step process"""
-        state = self.language_selection_state[(self.instance_id, chat_id)]
-        first_lang = state['first_lang']
-        second_lang = selected_lang_code
+        error_message = self.ERROR_USE_SETPAIR
+        failed_message = self.ERROR_FAILED_SET_PAIR
         
-        if self.set_user_language_pair(chat_id, first_lang, second_lang):
-            self._send_language_pair_confirmation(chat_id, first_lang, second_lang)
-        else:
-            self.send_message(chat_id, "❌ Failed to set language pair. Please try again.")
-        
-        del self.language_selection_state[(self.instance_id, chat_id)]
+        try:
+            state = self.language_selection_state[chat_id]
+            first_lang = state['first_lang']
+            second_lang = selected_lang_code
+            
+            logger.info(f"Second language selected for chat {chat_id}: {second_lang} (first was: {first_lang})")
+            
+            if self.set_user_language_pair(chat_id, first_lang, second_lang):
+                self._send_language_pair_confirmation(chat_id, first_lang, second_lang)
+            else:
+                self.send_message(chat_id, failed_message)
+            
+            # Always clean up the state
+            del self.language_selection_state[chat_id]
+            logger.info(f"Language selection completed for chat {chat_id}")
+            
+        except (KeyError, ValueError, TypeError) as e:
+            logger.error(f"Error in second language selection for chat {chat_id}: {e}")
+            self.send_message(chat_id, error_message)
+            if chat_id in self.language_selection_state:
+                del self.language_selection_state[chat_id]
     
     def _send_language_pair_confirmation(self, chat_id: int, first_lang: str, second_lang: str) -> None:
         """Send confirmation message for language pair setup"""
@@ -423,8 +518,14 @@ _Need help? Just ask!_ 💬
             self.send_message(chat_id, help_text)
             
         elif cmd == '/setpair':
+            # Clean up any existing stale state for this chat
+            if chat_id in self.language_selection_state:
+                logger.info(f"Cleaning up existing language selection state for chat {chat_id}")
+                del self.language_selection_state[chat_id]
+            
             # Start two-step language selection process
-            self.language_selection_state[(self.instance_id, chat_id)] = {'step': 'first_lang'}
+            self.language_selection_state[chat_id] = {'step': 'first_lang'}
+            logger.info(f"Started language selection for chat {chat_id}")
             
             # Create keyboard with all available languages
             keyboard = self._create_language_keyboard()
@@ -440,7 +541,7 @@ _Need help? Just ask!_ 💬
         elif cmd == '/stats':
             stats = self.user_stats.get(user_id, {'translations': 0})
             current_pair = self.get_user_language_pair(chat_id)
-            logger.info(f"Chat {chat_id} has language pair {current_pair[0]}-{current_pair[1]} on instance {self.instance_id}")
+            logger.info(f"Chat {chat_id} has language pair {current_pair[0]}-{current_pair[1]}")
             logger.info(f"All preferences: {self.user_preferences}")
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])

@@ -111,7 +111,7 @@ def get_stats():
         total_translations = sum(stats.get('translations', 0) for stats in bot.user_stats.values())
         
         language_distribution = {}
-        for (instance_id, chat_id), lang_pair in bot.user_preferences.items():
+        for chat_id, lang_pair in bot.user_preferences.items():
             # Count each language in the pair
             for lang in lang_pair:
                 language_distribution[lang] = language_distribution.get(lang, 0) + 1
@@ -121,14 +121,9 @@ def get_stats():
             "total_translations": total_translations,
             "language_distribution": language_distribution,
             "supported_languages": len(LanguageDetector.SUPPORTED_LANGUAGES),
-            "current_instance_id": bot.instance_id,
-            "preferences_by_instance": {
-                str(instance_id): {
-                    str(chat_id): lang_pair 
-                    for (inst_id, chat_id), lang_pair in bot.user_preferences.items() 
-                    if inst_id == instance_id
-                }
-                for instance_id in {inst_id for (inst_id, _) in bot.user_preferences.keys()}
+            "preferences_by_chat": {
+                str(chat_id): lang_pair 
+                for chat_id, lang_pair in bot.user_preferences.items()
             }
         })
         
