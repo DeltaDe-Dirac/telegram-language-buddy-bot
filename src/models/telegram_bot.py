@@ -270,14 +270,14 @@ class TelegramBot:
             callback_query_id = callback_query['id']
             
             logger.info(f"Processing callback query for chat {chat_id} with data: {data}")
-            logger.info(f"Current language selection states: {self.language_selection_state}")
             
             # Answer the callback query immediately to remove loading state
             self.answer_callback_query(callback_query_id)
             
-            # Handle two-step language selection
-            if chat_id in self.language_selection_state:
-                logger.info(f"Found language selection state for chat {chat_id}: {self.language_selection_state[chat_id]}")
+            # Check if chat has language selection state in database
+            state = self.db.get_language_selection_state(chat_id)
+            if state:
+                logger.info(f"Found language selection state for chat {chat_id}: {state}")
                 self._handle_language_selection(chat_id, data)
             # Handle legacy language pair selection (for backward compatibility)
             elif '|' in data:  # Format: "flag1|flag2"
@@ -285,7 +285,7 @@ class TelegramBot:
                 self._handle_legacy_language_selection(chat_id, data)
             else:
                 logger.warning(f"Unknown callback data format for chat {chat_id}: {data}")
-                logger.warning(f"Chat {chat_id} not in language selection state: {list(self.language_selection_state.keys())}")
+                logger.warning(f"Chat {chat_id} not in language selection state")
                 self.send_message(chat_id, self.ERROR_INVALID_CALLBACK)
                 
         except SystemExit:
