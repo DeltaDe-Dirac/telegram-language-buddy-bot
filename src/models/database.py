@@ -1,6 +1,6 @@
 import os
 import logging
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
@@ -54,8 +54,67 @@ class DatabaseManager:
         self.session_local = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
         
         # Create tables
-        Base.metadata.create_all(bind=self.engine)
+        self._ensure_proper_schema()
         logger.info("Database initialized")
+    
+    def _ensure_proper_schema(self):
+        """Ensure database schema has proper column types for chat_id"""
+        try:
+            # Check if we're using PostgreSQL
+            if 'postgresql' in str(self.engine.url):
+                logger.info("Detected PostgreSQL database, ensuring proper schema...")
+                self._fix_postgresql_schema()
+            else:
+                # For SQLite, just create tables normally
+                Base.metadata.create_all(bind=self.engine)
+        except Exception as e:
+            logger.error(f"Error ensuring proper schema: {e}")
+            # Fallback to normal table creation
+            Base.metadata.create_all(bind=self.engine)
+    
+    def _fix_postgresql_schema(self):
+        """Fix PostgreSQL schema to use BIGINT for chat_id columns"""
+        try:
+            with self.engine.connect() as conn:
+                # Check if tables exist
+                result = conn.execute(text("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name IN ('user_preferences', 'language_selection_state')
+                """))
+                existing_tables = [row[0] for row in result]
+                
+                if not existing_tables:
+                    # No tables exist, create them normally
+                    Base.metadata.create_all(bind=self.engine)
+                    logger.info("Created new tables with proper schema")
+                    return
+                
+                # Check if chat_id columns are BIGINT
+                for table_name in existing_tables:
+                    result = conn.execute(text(f"""
+                        SELECT data_type 
+                        FROM information_schema.columns 
+                        WHERE table_name = '{table_name}' 
+                        AND column_name = 'chat_id'
+                    """))
+                    column_type = result.fetchone()
+                    
+                    if column_type and column_type[0] != 'bigint':
+                        logger.warning(f"Table {table_name} has chat_id as {column_type[0]}, need to fix...")
+                        # Drop and recreate the table
+                        conn.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+                        logger.info(f"Dropped table {table_name} to recreate with proper schema")
+                
+                # Create tables with proper schema
+                Base.metadata.create_all(bind=self.engine)
+                logger.info("Recreated tables with proper BIGINT chat_id columns")
+                
+        except Exception as e:
+            logger.error(f"Error fixing PostgreSQL schema: {e}")
+            # Fallback to normal table creation
+            Base.metadata.create_all(bind=self.engine)
     
     def get_session(self):
         """Get database session"""
