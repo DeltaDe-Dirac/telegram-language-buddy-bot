@@ -266,6 +266,7 @@ class TelegramBot:
             callback_query_id = callback_query['id']
             
             logger.info(f"Processing callback query for chat {chat_id} with data: {data}")
+            logger.info(f"Current language selection states: {self.language_selection_state}")
             
             # Answer the callback query immediately to remove loading state
             self.answer_callback_query(callback_query_id)
@@ -280,6 +281,7 @@ class TelegramBot:
                 self._handle_legacy_language_selection(chat_id, data)
             else:
                 logger.warning(f"Unknown callback data format for chat {chat_id}: {data}")
+                logger.warning(f"Chat {chat_id} not in language selection state: {list(self.language_selection_state.keys())}")
                 self.send_message(chat_id, self.ERROR_INVALID_CALLBACK)
                 
         except SystemExit:
@@ -333,9 +335,17 @@ class TelegramBot:
     
     def _extract_language_code(self, data: str) -> str | None:
         """Extract language code from callback data"""
+        logger.info(f"Extracting language code from data: '{data}'")
+        
+        # First check if the data is already a valid language code
         if data in LanguageDetector.SUPPORTED_LANGUAGES:
+            logger.info(f"Found direct language code: {data}")
             return data
-        return self._get_language_code_from_button(data)
+        
+        # If not, try to extract from button text format (for backward compatibility)
+        extracted = self._get_language_code_from_button(data)
+        logger.info(f"Extracted from button text: {extracted}")
+        return extracted
     
     def _handle_first_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
         """Handle first language selection in two-step process"""
