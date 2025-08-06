@@ -1,6 +1,6 @@
 import os
 import logging
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
@@ -14,7 +14,7 @@ class UserPreferences(Base):
     __tablename__ = 'user_preferences'
     
     id = Column(Integer, primary_key=True)
-    chat_id = Column(Integer, unique=True, nullable=False)
+    chat_id = Column(BigInteger, unique=True, nullable=False)
     language1 = Column(String(10), nullable=False)
     language2 = Column(String(10), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -35,7 +35,7 @@ class LanguageSelectionState(Base):
     __tablename__ = 'language_selection_state'
     
     id = Column(Integer, primary_key=True)
-    chat_id = Column(Integer, unique=True, nullable=False)
+    chat_id = Column(BigInteger, unique=True, nullable=False)
     step = Column(String(20), nullable=False)  # 'first_lang' or 'second_lang'
     first_lang = Column(String(10), nullable=True)  # Only set when step is 'second_lang'
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
