@@ -104,14 +104,24 @@ def manual_translate():
         return jsonify({"error": str(e)}), 500
 
 def get_stats():
-    """Get bot statistics"""
+    """Get bot statistics from database"""
     try:
         bot = get_bot()
-        total_users = len(bot.user_preferences)
-        total_translations = sum(stats.get('translations', 0) for stats in bot.user_stats.values())
+        all_preferences = bot.db.get_all_preferences()
+        total_users = len(all_preferences)
         
+        # Calculate total translations from database
+        total_translations = 0
         language_distribution = {}
-        for chat_id, lang_pair in bot.user_preferences.items():
+        
+        # Get all user stats from database
+        with bot.db.get_session() as session:
+            from ..models.database import UserStats
+            all_stats = session.query(UserStats).all()
+            total_translations = sum(stats.translations for stats in all_stats)
+        
+        # Calculate language distribution
+        for chat_id, lang_pair in all_preferences.items():
             # Count each language in the pair
             for lang in lang_pair:
                 language_distribution[lang] = language_distribution.get(lang, 0) + 1
@@ -123,10 +133,10 @@ def get_stats():
             "supported_languages": len(LanguageDetector.SUPPORTED_LANGUAGES),
             "preferences_by_chat": {
                 str(chat_id): lang_pair 
-                for chat_id, lang_pair in bot.user_preferences.items()
+                for chat_id, lang_pair in all_preferences.items()
             },
-            "storage_type": "file-based",
-            "preferences_file": "language_preferences.json"
+            "storage_type": "database",
+            "database_url": bot.db.engine.url
         })
         
     except (AttributeError, KeyError, TypeError) as e:

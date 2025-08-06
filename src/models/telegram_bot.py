@@ -1,19 +1,17 @@
 import os
-import json
-import requests
 import logging
-from typing import Dict, List, Tuple
+import requests
+from typing import Dict, List, Tuple, Optional
 from datetime import datetime
-from pathlib import Path
 
 from .language_detector import LanguageDetector
 from .free_translator import FreeTranslator
+from .database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
 # Constants
 REQUEST_TIMEOUT = 10
-PREFERENCES_FILE = os.path.join(os.getcwd(), "language_preferences.json")
 
 class TelegramBot:
     """Telegram Bot API integration"""
@@ -31,10 +29,7 @@ class TelegramBot:
         self.token = os.getenv('TELEGRAM_BOT_TOKEN')
         self.base_url = f"https://api.telegram.org/bot{self.token}"
         self.translator = FreeTranslator()
-        
-        # Load preferences from file
-        self.user_preferences = self._load_preferences()
-        self.user_stats = {}
+        self.db = DatabaseManager()
         
         # State management for two-step language selection
         # {chat_id: {'step': 'first_lang' or 'second_lang', 'first_lang': 'lang_code'}}
@@ -42,35 +37,8 @@ class TelegramBot:
         
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
-    
-    def _load_preferences(self) -> Dict[int, Tuple[str, str]]:
-        """Load language preferences from file"""
-        try:
-            if os.path.exists(PREFERENCES_FILE):
-                with open(PREFERENCES_FILE, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    # Convert string keys back to integers
-                    preferences = {int(k): tuple(v) for k, v in data.items()}
-                    logger.info(f"Loaded {len(preferences)} language preferences from file")
-                    return preferences
-        except (IOError, ValueError) as e:
-            logger.warning(f"Could not load preferences from file {PREFERENCES_FILE}: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error loading preferences: {e}")
-        return {}
-    
-    def _save_preferences(self) -> None:
-        """Save language preferences to file"""
-        try:
-            # Convert integer keys to strings for JSON serialization
-            data = {str(k): list(v) for k, v in self.user_preferences.items()}
-            with open(PREFERENCES_FILE, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2)
-            logger.info(f"Saved {len(self.user_preferences)} language preferences to file")
-        except (IOError, TypeError) as e:
-            logger.error(f"Could not save preferences to file {PREFERENCES_FILE}: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error saving preferences: {e}")
+        
+        logger.info("TelegramBot initialized with database")
     
     def answer_callback_query(self, callback_query_id: str, text: str = None) -> bool:
         """Answer callback query to remove loading state"""
@@ -147,34 +115,38 @@ class TelegramBot:
             return False
     
     def get_user_language_pair(self, chat_id: int) -> Tuple[str, str]:
-        """Get chat's language pair (always use chat_id)"""
+        """Get chat's language pair from database"""
         logger.info(f"Retrieving language preferences for chat {chat_id}")
-        result = self.user_preferences.get(chat_id, ('en', 'ru'))
-        logger.info(f"Chat {chat_id} has language pair {result[0]}-{result[1]}")
-        return result
+        prefs = self.db.get_user_preferences(chat_id)
+        if prefs:
+            logger.info(f"Chat {chat_id} has language pair {prefs[0]}-{prefs[1]}")
+            return prefs
+        else:
+            # Default fallback
+            default_pair = ('en', 'ru')
+            logger.info(f"Chat {chat_id} has no preferences, using default: {default_pair[0]}-{default_pair[1]}")
+            return default_pair
     
     def set_user_language_pair(self, chat_id: int, lang1: str, lang2: str) -> bool:
-        """Set chat's language pair (always use chat_id)"""
-
+        """Set chat's language pair in database"""
         if (LanguageDetector.is_valid_language(lang1) and 
             LanguageDetector.is_valid_language(lang2) and 
             lang1 != lang2):
-            self.user_preferences[chat_id] = (lang1.lower(), lang2.lower())
-            logger.info(f"Language pair set to {lang1} and {lang2} in chat {chat_id}")
-            logger.info(f"All preferences after set: {self.user_preferences}")
             
-            # Save to file immediately
-            self._save_preferences()
-            return True
-
-        logger.warning(f"Language pair {lang1} and {lang2} was not set in chat {chat_id}")
-        return False
+            success = self.db.set_user_preferences(chat_id, lang1, lang2)
+            if success:
+                logger.info(f"Language pair set to {lang1} and {lang2} in chat {chat_id}")
+                return True
+            else:
+                logger.error(f"Failed to save language pair to database for chat {chat_id}")
+                return False
+        else:
+            logger.warning(f"Invalid language pair {lang1} and {lang2} for chat {chat_id}")
+            return False
     
     def update_user_stats(self, user_id: int):
-        """Update user translation statistics"""
-        if user_id not in self.user_stats:
-            self.user_stats[user_id] = {'translations': 0, 'joined': datetime.now()}
-        self.user_stats[user_id]['translations'] += 1
+        """Update user translation statistics in database"""
+        self.db.update_user_stats(user_id)
     
     def _create_language_keyboard(self, exclude_lang: str = None) -> List[List[tuple]]:
         """Create keyboard with all available languages"""
@@ -583,10 +555,9 @@ _Need help? Just ask!_ 💬
             self.send_message(chat_id, response)
             
         elif cmd == '/stats':
-            stats = self.user_stats.get(user_id, {'translations': 0})
+            stats = self.db.get_user_stats(user_id) or {'translations': 0, 'joined': 'Unknown'}
             current_pair = self.get_user_language_pair(chat_id)
             logger.info(f"Chat {chat_id} has language pair {current_pair[0]}-{current_pair[1]}")
-            logger.info(f"All preferences: {self.user_preferences}")
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])
             
