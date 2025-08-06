@@ -18,13 +18,15 @@ class TelegramBot:
         self.translator = FreeTranslator()
         
         # In-memory storage (use database in production)
-        # user_preferences now stores language pairs: {user_id: (lang1, lang2)} or {chat_id: (lang1, lang2)}
+        # user_preferences now stores language pairs: {chat_id: (lang1, lang2)}
         self.user_preferences = {}
         self.user_stats = {}
         
         # State management for two-step language selection
         # {user_id: {'step': 'first_lang' or 'second_lang', 'first_lang': 'lang_code'}}
         self.language_selection_state = {}
+        
+        logger.info(f"TelegramBot instance created with ID: {id(self)}")
         
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
@@ -86,26 +88,25 @@ class TelegramBot:
             logger.error(f"Failed to send keyboard: {e}")
             return False
     
-    def get_user_language_pair(self, user_id: int, chat_id: int = None) -> Tuple[str, str]:
-        """Get user's language pair (supports both user and group chat preferences)"""
-        # For group chats, use chat_id; for private chats, use user_id
-        key = chat_id if chat_id and chat_id < 0 else user_id
-        logger.info(f"Retrieving language preferences by key {key}")
-        return self.user_preferences.get(key, ('en', 'ru'))
+    def get_user_language_pair(self, chat_id: int) -> Tuple[str, str]:
+        """Get chat's language pair (always use chat_id)"""
+        logger.info(f"Retrieving language preferences by key {chat_id} from instance {id(self)}")
+        result = self.user_preferences.get(chat_id, ('en', 'ru'))
+        logger.info(f"User {chat_id} has language pair {result[0]}-{result[1]} in chat {chat_id}")
+        return result
     
-    def set_user_language_pair(self, user_id: int, lang1: str, lang2: str, chat_id: int = None) -> bool:
-        """Set user's language pair (supports both user and group chat preferences)"""
+    def set_user_language_pair(self, chat_id: int, lang1: str, lang2: str) -> bool:
+        """Set chat's language pair (always use chat_id)"""
 
         if (LanguageDetector.is_valid_language(lang1) and 
             LanguageDetector.is_valid_language(lang2) and 
             lang1 != lang2):
-            # For group chats, use chat_id; for private chats, use user_id
-            key = chat_id if chat_id and chat_id < 0 else user_id
-            self.user_preferences[key] = (lang1.lower(), lang2.lower())
-            logger.info(f"User {user_id} set language pair to {lang1} and {lang2} in chat {chat_id}")
+            self.user_preferences[chat_id] = (lang1.lower(), lang2.lower())
+            logger.info(f"Language pair set to {lang1} and {lang2} in chat {chat_id} on instance {id(self)}")
+            logger.info(f"All preferences after set: {self.user_preferences}")
             return True
 
-        logger.warning(f"Language pair {lang1} and {lang2} was not set in chat {chat_id} or user {user_id}")
+        logger.warning(f"Language pair {lang1} and {lang2} was not set in chat {chat_id}")
         return False
     
     def update_user_stats(self, user_id: int):
@@ -197,8 +198,8 @@ class TelegramBot:
             return
         
         # Regular message - translate it
-        lang1, lang2 = self.get_user_language_pair(user_id, chat_id)
-        logger.info(f"User {user_id} has language pair {lang1}-{lang2} in chat {chat_id}")
+        lang1, lang2 = self.get_user_language_pair(chat_id)
+        logger.info(f"Chat {chat_id} has language pair {lang1}-{lang2}")
         detected_lang = self.translator.detect_language(text)
         
         # Determine target language based on detected language and language pair
@@ -282,7 +283,7 @@ class TelegramBot:
         first_lang = state['first_lang']
         second_lang = selected_lang_code
         
-        if self.set_user_language_pair(user_id, first_lang, second_lang, chat_id):
+        if self.set_user_language_pair(chat_id, first_lang, second_lang):
             self._send_language_pair_confirmation(chat_id, first_lang, second_lang)
         else:
             self.send_message(chat_id, "❌ Failed to set language pair. Please try again.")
@@ -305,7 +306,7 @@ class TelegramBot:
         lang1 = self._get_language_from_flag(flag1)
         lang2 = self._get_language_from_flag(flag2)
         
-        if lang1 and lang2 and self.set_user_language_pair(user_id, lang1, lang2, chat_id):
+        if lang1 and lang2 and self.set_user_language_pair(chat_id, lang1, lang2):
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES[lang1]
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES[lang2]
             response = f"✅ *Language pair set to {lang1_name} ↔ {lang2_name}*\n\nNow send me any message and I'll translate between these languages!"
@@ -435,8 +436,8 @@ _Need help? Just ask!_ 💬
             
         elif cmd == '/stats':
             stats = self.user_stats.get(user_id, {'translations': 0})
-            current_pair = self.get_user_language_pair(user_id, chat_id)
-            logger.info(f"User {user_id} has language pair {current_pair[0]}-{current_pair[1]} in chat {chat_id}")
+            current_pair = self.get_user_language_pair(chat_id)
+            logger.info(f"Chat {chat_id} has language pair {current_pair[0]}-{current_pair[1]} on instance {id(self)}")
             logger.info(f"All preferences: {self.user_preferences}")
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])

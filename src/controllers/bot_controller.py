@@ -1,6 +1,7 @@
 import json
 import logging
 import requests
+import threading
 from datetime import datetime
 from flask import request, jsonify
 
@@ -8,15 +9,34 @@ from ..models import LanguageDetector, TelegramBot
 
 logger = logging.getLogger(__name__)
 
-# Initialize the bot (will be created when needed)
-bot = None
+class BotSingleton:
+    """Thread-safe singleton for TelegramBot instance"""
+    _instance = None
+    _lock = threading.Lock()
+    
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._bot = None
+        return cls._instance
+    
+    def get_bot(self):
+        """Get or create bot instance"""
+        if self._bot is None:
+            with self._lock:
+                if self._bot is None:
+                    self._bot = TelegramBot()
+                    logger.info("Created new TelegramBot instance")
+        return self._bot
+
+# Global singleton instance
+bot_singleton = BotSingleton()
 
 def get_bot():
-    """Get or create bot instance"""
-    global bot
-    if bot is None:
-        bot = TelegramBot()
-    return bot
+    """Get bot instance from singleton"""
+    return bot_singleton.get_bot()
 
 def home():
     """Health check endpoint"""
