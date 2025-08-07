@@ -5,7 +5,10 @@ import threading
 from datetime import datetime
 from flask import request, jsonify
 
-from models import LanguageDetector, TelegramBot
+try:
+    from models import LanguageDetector, TelegramBot
+except ImportError:
+    from ..models import LanguageDetector, TelegramBot
 
 logger = logging.getLogger(__name__)
 
