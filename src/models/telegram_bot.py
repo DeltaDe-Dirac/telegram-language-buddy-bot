@@ -243,7 +243,6 @@ class TelegramBot:
         """Handle regular text message"""
         chat_id = message['chat']['id']
         user_id = message['from']['id']
-        message_id = message['message_id']
         text = message.get('text', '').strip()
         
         if not text:
@@ -275,9 +274,7 @@ class TelegramBot:
         # Don't translate if already in target language
         if detected_lang == target_lang:
             user_name = message['from'].get('first_name', 'User')
-            response = f"✅ *Already in {LanguageDetector.SUPPORTED_LANGUAGES.get(target_lang, target_lang)}*\n\n"
-            response += f"👤 **{user_name}:**\n"
-            response += f"_{text}_"
+            response = f"✅ *Already in {LanguageDetector.SUPPORTED_LANGUAGES.get(target_lang, target_lang)}*\n\n👤 **{user_name}:**\n_{text}_"
             logger.info(f"Already in target language, sending formatted response for chat {chat_id}")
             self.send_message(chat_id, response)
             return
