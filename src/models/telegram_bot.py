@@ -167,9 +167,9 @@ class TelegramBot:
             logger.warning(f"Invalid language pair {lang1} and {lang2} for chat {chat_id}")
             return False
     
-    def update_user_stats(self, user_id: int):
+    def update_user_stats(self, user_id: int) -> bool:
         """Update user translation statistics in database"""
-        self.db.update_user_stats(user_id)
+        return self.db.update_user_stats(user_id)
     
     def _create_language_keyboard(self, exclude_lang: str = None) -> List[List[tuple]]:
         """Create keyboard with all available languages"""

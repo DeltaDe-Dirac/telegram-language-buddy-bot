@@ -13,6 +13,10 @@ class FreeTranslator:
     def translate_text(self, text: str, target_lang: str, source_lang: str = 'auto') -> Optional[str]:
         """Translate text using Google Translate"""
         
+        if not text or not isinstance(text, str):
+            logger.error("Invalid text input for translation")
+            return "❌ Translation failed - please try again"
+        
         logger.info(f"Translating text: {text[:50]}... from {source_lang} to {target_lang}")
         
         result = self._translate_googletrans(text, target_lang, source_lang)

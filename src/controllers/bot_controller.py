@@ -5,7 +5,7 @@ import threading
 from datetime import datetime
 from flask import request, jsonify
 
-from ..models import LanguageDetector, TelegramBot
+from models import LanguageDetector, TelegramBot
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ def get_stats():
         
         # Get all user stats from database
         with bot.db.get_session() as session:
-            from ..models.database import UserStats
+            from models.database import UserStats
             all_stats = session.query(UserStats).all()
             total_translations = sum(stats.translations for stats in all_stats)
         

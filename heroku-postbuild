@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Heroku postbuild script - runs after dependencies are installed
+
+echo "=== Running tests in postbuild phase ==="
+
+# Set test environment
+export FLASK_ENV=testing
+export DATABASE_URL=sqlite:///:memory:
+
+# Run all tests with coverage
+echo "Running tests..."
+python -m pytest tests/ -v --tb=short
+
+# Check if tests passed
+if [ $? -eq 0 ]; then
+    echo "✅ All tests passed! Build successful."
+    echo "Test coverage report:"
+    python -m pytest tests/ --cov=src --cov-report=term-missing
+    exit 0
+else
+    echo "❌ Tests failed! Build failed."
+    echo "Please fix the failing tests before deploying."
+    exit 1
+fi

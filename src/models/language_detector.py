@@ -27,4 +27,6 @@ class LanguageDetector:
     @classmethod
     def is_valid_language(cls, lang_code: str) -> bool:
         """Check if language code is supported"""
-        return lang_code.lower() in cls.SUPPORTED_LANGUAGES 
+        if not lang_code or not isinstance(lang_code, str):
+            return False
+        return lang_code.strip().lower() in cls.SUPPORTED_LANGUAGES 

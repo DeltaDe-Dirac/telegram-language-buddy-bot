@@ -1,0 +1,23 @@
+{
+  "name": "telegram-language-buddy-bot",
+  "description": "A Telegram bot for language translation and learning",
+  "repository": "https://github.com/yourusername/telegram-language-buddy-bot",
+  "keywords": ["python", "telegram", "bot", "translation"],
+  "env": {
+    "FLASK_ENV": {
+      "description": "Flask environment",
+      "value": "production"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  }
+}
