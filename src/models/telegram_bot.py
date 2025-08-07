@@ -440,7 +440,7 @@ class TelegramBot:
                 chat_id, message_id, user_id, text, new_translated,
                 detected_lang, target_lang
             )
-            return f"🔄 **New Translation:**\n_{text}_ → _{new_translated}_"
+            return f"🔄 **New Translation:**\n_{new_translated}_"
         else:
             return "❌ **New translation failed**"
     
