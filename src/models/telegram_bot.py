@@ -291,9 +291,12 @@ class TelegramBot:
         if translated and translated != text:
             self.update_user_stats(user_id)
             
+            user_name = message['from'].get('first_name', 'User')
             response = f"🔤 *Translation* ({detected_lang} → {target_lang})\n\n"
-            response += f"*Original:* {text}\n\n"
-            response += f"*Translation:* {translated}"
+            response += f"👤 **{user_name}:**\n"
+            response += f"_{text}_\n\n"
+            response += f"🔄 **Translation:**\n"
+            response += f"_{translated}_"
             
             logger.info(f"Translation successful, replacing message {message_id} in chat {chat_id}")
             if self.delete_message(chat_id, message_id):
@@ -302,7 +305,11 @@ class TelegramBot:
                 logger.warning(f"Failed to delete message, falling back to reply for chat {chat_id}")
                 self.send_message(chat_id, response)
         else:
-            error_response = f"❌ *Translation failed*\n\n*Original:* {text}\n\n*Error:* Unable to translate this text. Please try again."
+            user_name = message['from'].get('first_name', 'User')
+            error_response = f"❌ *Translation failed*\n\n"
+            error_response += f"👤 **{user_name}:**\n"
+            error_response += f"_{text}_\n\n"
+            error_response += f"⚠️ **Error:** Unable to translate this text. Please try again."
             logger.info(f"Translation failed, replacing message {message_id} in chat {chat_id} with error")
             if self.delete_message(chat_id, message_id):
                 self.send_message(chat_id, error_response)
