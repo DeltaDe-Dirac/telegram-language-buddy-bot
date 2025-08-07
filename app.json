@@ -1,7 +1,7 @@
 {
   "name": "telegram-language-buddy-bot",
   "description": "A Telegram bot for language translation and learning",
-  "repository": "https://github.com/yourusername/telegram-language-buddy-bot",
+  "repository": "https://github.com/DeltaDe-Dirac/telegram-language-buddy-bot",
   "keywords": ["python", "telegram", "bot", "translation"],
   "env": {
     "FLASK_ENV": {
