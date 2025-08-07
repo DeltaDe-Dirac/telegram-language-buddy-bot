@@ -233,6 +233,8 @@ class TelegramBot:
         try:
             if 'message' in update:
                 self._handle_message(update['message'])
+            elif 'edited_message' in update:
+                self._handle_edited_message(update['edited_message'])
             elif 'callback_query' in update:
                 self._handle_callback_query(update['callback_query'])
                 
@@ -284,6 +286,14 @@ class TelegramBot:
         
         if translated and translated != text:
             self.update_user_stats(user_id)
+            
+            # Store the translation for potential future edits
+            message_id = message.get('message_id')
+            if message_id:
+                self.db.store_message_translation(
+                    chat_id, message_id, user_id, text, translated,
+                    detected_lang, target_lang
+                )
             
             user_name = message['from'].get('first_name', 'User')
             response = f"🔤 *Translation* ({detected_lang} → {target_lang})\n\n"
@@ -344,6 +354,95 @@ class TelegramBot:
                     self.send_message(chat_id, self.ERROR_PROCESSING_SELECTION)
             except (KeyError, ValueError, TypeError):
                 pass
+    
+    def _handle_edited_message(self, message: Dict) -> None:
+        """Handle edited message and show previous translation"""
+        try:
+            chat_id = message['chat']['id']
+            user_id = message['from']['id']
+            message_id = message['message_id']
+            text = message.get('text', '').strip()
+            
+            if not text:
+                return
+            
+            # Handle commands in edited messages
+            if text.startswith('/'):
+                self._handle_command(chat_id, user_id, text)
+                return
+            
+            # Get previous translation for this message
+            previous_translation = self.db.get_message_translation(chat_id, message_id)
+            
+            if previous_translation:
+                self._handle_edited_message_with_previous_translation(
+                    message, chat_id, user_id, message_id, text, previous_translation
+                )
+            else:
+                # No previous translation found, treat as new message
+                logger.info(f"No previous translation found for edited message {message_id} in chat {chat_id}")
+                self._handle_message(message)
+                
+        except (KeyError, ValueError, TypeError) as e:
+            logger.error(f"Error handling edited message: {e}")
+    
+    def _handle_edited_message_with_previous_translation(self, message: Dict, chat_id: int, 
+                                                        user_id: int, message_id: int, 
+                                                        text: str, previous_translation: Dict) -> None:
+        """Handle edited message when previous translation exists"""
+        user_name = message['from'].get('first_name', 'User')
+        response = self._build_edit_response_header(user_name, text, previous_translation)
+        
+        # Get new translation
+        target_lang = self._get_target_language_for_edit(chat_id, text)
+        if not target_lang:
+            response += "⚠️ **Note:** New text language not in your language pair"
+            self.send_message(chat_id, response)
+            return
+        
+        detected_lang = self.translator.detect_language(text)
+        response += self._build_new_translation_response(
+            text, detected_lang, target_lang, chat_id, message_id, user_id
+        )
+        
+        self.send_message(chat_id, response)
+    
+    def _build_edit_response_header(self, user_name: str, text: str, previous_translation: Dict) -> str:
+        """Build the header part of edit response with previous translation"""
+        response = "✏️ *Message Edited*\n\n"
+        response += f"👤 **{user_name}:**\n"
+        response += f"_{text}_\n\n"
+        response += "📝 **Previous Translation:**\n"
+        response += f"_{previous_translation['translated_text']}_\n\n"
+        return response
+    
+    def _get_target_language_for_edit(self, chat_id: int, text: str) -> str | None:
+        """Get target language for edited message"""
+        lang1, lang2 = self.get_user_language_pair(chat_id)
+        detected_lang = self.translator.detect_language(text)
+        
+        if detected_lang == lang1:
+            return lang2
+        elif detected_lang == lang2:
+            return lang1
+        return None
+    
+    def _build_new_translation_response(self, text: str, detected_lang: str, target_lang: str,
+                                       chat_id: int, message_id: int, user_id: int) -> str:
+        """Build response for new translation of edited message"""
+        if detected_lang == target_lang:
+            return "✅ **New text already in target language**"
+        
+        new_translated = self.translator.translate_text(text, target_lang, detected_lang)
+        if new_translated and new_translated != text:
+            # Store the new translation
+            self.db.store_message_translation(
+                chat_id, message_id, user_id, text, new_translated,
+                detected_lang, target_lang
+            )
+            return f"🔄 **New Translation:**\n_{new_translated}_"
+        else:
+            return "❌ **New translation failed**"
     
     def _handle_language_selection(self, chat_id: int, data: str) -> None:
         """Handle two-step language selection process"""
@@ -513,7 +612,7 @@ class TelegramBot:
             '\U0001F1F7\U0001F1F4': 'ro',  # 🇷🇴
             '\U0001F1E7\U0001F1EC': 'bg',  # 🇧🇬
             '\U0001F1ED\U0001F1F7': 'hr',  # 🇭🇷
-            '\U0001F1F7\U0001F1F8': 'sr',  # 🇷🇸
+            '\U0001F1F7\U0001F1F8': 'sr',  # 🇷��
             '\U0001F1F8\U0001F1EE': 'sl',  # 🇸🇮
             '\U0001F1EA\U0001F1EA': 'et',  # 🇪🇪
             '\U0001F1F1\U0001F1FB': 'lv',  # 🇱🇻
