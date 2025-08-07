@@ -47,7 +47,7 @@ def home():
         "status": "active",
         "service": "Telegram Language Buddy Bot",
         "timestamp": datetime.now().isoformat(),
-        "version": "2.0.1"
+        "version": "3.0.0"
     }
 
 def webhook():
