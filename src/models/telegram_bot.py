@@ -413,7 +413,7 @@ class TelegramBot:
         response += f"👤 **{user_name}:**\n"
         response += f"_{text}_\n\n"
         response += "📝 **Previous Translation:**\n"
-        response += f"_{previous_translation['original_text']}_ → _{previous_translation['translated_text']}_\n\n"
+        response += f"_{previous_translation['translated_text']}_\n\n"
         return response
     
     def _get_target_language_for_edit(self, chat_id: int, text: str) -> str | None:
