@@ -57,7 +57,7 @@ class MessageTranslation(Base):
     
     # Composite unique constraint to prevent duplicates
     __table_args__ = (
-        {'sqlite_autoincrement': True} if 'sqlite' in str(Base.metadata.bind.url) else {}
+        {'sqlite_autoincrement': True} if 'sqlite' in os.getenv('DATABASE_URL', 'sqlite:///bot_data.db') else {}
     )
 
 class DatabaseManager:
