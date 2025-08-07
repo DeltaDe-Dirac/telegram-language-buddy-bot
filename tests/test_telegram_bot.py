@@ -7,7 +7,7 @@ import json
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from models.telegram_bot import TelegramBot
+from src.models.telegram_bot import TelegramBot
 
 
 class TestTelegramBot(unittest.TestCase):
