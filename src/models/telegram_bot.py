@@ -273,7 +273,10 @@ class TelegramBot:
         
         # Don't translate if already in target language
         if detected_lang == target_lang:
-            response = f"✅ *Already in {LanguageDetector.SUPPORTED_LANGUAGES.get(target_lang, target_lang)}*\n\n_{text}_"
+            user_name = message['from'].get('first_name', 'User')
+            response = f"✅ *Already in {LanguageDetector.SUPPORTED_LANGUAGES.get(target_lang, target_lang)}*\n\n"
+            response += f"👤 **{user_name}:**\n"
+            response += f"_{text}_"
             logger.info(f"Already in target language, replacing message {message_id} in chat {chat_id}")
             if self.delete_message(chat_id, message_id):
                 self.send_message(chat_id, response)
