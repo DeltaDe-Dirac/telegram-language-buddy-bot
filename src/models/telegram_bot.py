@@ -83,11 +83,19 @@ class TelegramBot:
                 'parse_mode': parse_mode
             }
             
+            logger.info(f"Attempting to edit message {message_id} in chat {chat_id}")
             response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
-            return response.status_code == 200
+            result = response.json()
+            
+            if response.status_code == 200:
+                logger.info(f"Successfully edited message {message_id} in chat {chat_id}")
+                return True
+            else:
+                logger.error(f"Failed to edit message {message_id} in chat {chat_id}: {result}")
+                return False
             
         except (requests.RequestException, requests.Timeout) as e:
-            logger.error(f"Failed to edit message: {e}")
+            logger.error(f"Failed to edit message {message_id} in chat {chat_id}: {e}")
             return False
     
     def send_keyboard(self, chat_id: int, text: str, keyboard: List[List]) -> bool:
@@ -268,7 +276,10 @@ class TelegramBot:
         # Don't translate if already in target language
         if detected_lang == target_lang:
             response = f"✅ *Already in {LanguageDetector.SUPPORTED_LANGUAGES.get(target_lang, target_lang)}*\n\n_{text}_"
-            self.edit_message(chat_id, message_id, response)
+            logger.info(f"Already in target language, editing message {message_id} in chat {chat_id}")
+            if not self.edit_message(chat_id, message_id, response):
+                logger.warning(f"Failed to edit message, falling back to reply for chat {chat_id}")
+                self.send_message(chat_id, response)
             return
         
         # Translate the message
@@ -281,10 +292,16 @@ class TelegramBot:
             response += f"*Original:* {text}\n\n"
             response += f"*Translation:* {translated}"
             
-            self.edit_message(chat_id, message_id, response)
+            logger.info(f"Translation successful, editing message {message_id} in chat {chat_id}")
+            if not self.edit_message(chat_id, message_id, response):
+                logger.warning(f"Failed to edit message, falling back to reply for chat {chat_id}")
+                self.send_message(chat_id, response)
         else:
             error_response = f"❌ *Translation failed*\n\n*Original:* {text}\n\n*Error:* Unable to translate this text. Please try again."
-            self.edit_message(chat_id, message_id, error_response)
+            logger.info(f"Translation failed, editing message {message_id} in chat {chat_id} with error")
+            if not self.edit_message(chat_id, message_id, error_response):
+                logger.warning(f"Failed to edit message, falling back to reply for chat {chat_id}")
+                self.send_message(chat_id, error_response)
     
     def _handle_callback_query(self, callback_query: Dict) -> None:
         """Handle inline keyboard callback"""
