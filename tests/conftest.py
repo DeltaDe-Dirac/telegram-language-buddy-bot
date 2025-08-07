@@ -17,13 +17,15 @@ def test_database():
     
     # Override the database manager's engine
     original_engine = DatabaseManager.engine
+    original_session_local = DatabaseManager.session_local
     DatabaseManager.engine = engine
-    DatabaseManager.SessionLocal = TestingSessionLocal
+    DatabaseManager.session_local = TestingSessionLocal
     
     yield engine
     
     # Restore original engine
     DatabaseManager.engine = original_engine
+    DatabaseManager.session_local = original_session_local
 
 @pytest.fixture(autouse=True)
 def setup_test_env(test_database):
@@ -35,7 +37,7 @@ def setup_test_env(test_database):
     yield
     
     # Clean up after each test
-    with DatabaseManager.get_session() as session:
+    with DatabaseManager.get_session_class() as session:
         for table in reversed(Base.metadata.sorted_tables):
             session.execute(table.delete())
         session.commit()

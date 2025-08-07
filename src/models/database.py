@@ -63,6 +63,10 @@ class MessageTranslation(Base):
 class DatabaseManager:
     """Database manager for the bot"""
     
+    # Class attributes for testing
+    engine = None
+    session_local = None
+    
     def __init__(self):
         # Use SQLite for simplicity, can be changed to PostgreSQL for production
         database_url = os.getenv('DATABASE_URL', 'sqlite:///bot_data.db')
@@ -71,6 +75,10 @@ class DatabaseManager:
         
         self.engine = create_engine(database_url)
         self.session_local = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        
+        # Set class attributes for testing
+        DatabaseManager.engine = self.engine
+        DatabaseManager.session_local = self.session_local
         
         # Create tables
         self._ensure_proper_schema()
@@ -138,6 +146,13 @@ class DatabaseManager:
     def get_session(self):
         """Get database session"""
         return self.session_local()
+    
+    @classmethod
+    def get_session_class(cls):
+        """Get database session (class method for testing)"""
+        if cls.session_local is None:
+            raise RuntimeError("DatabaseManager not initialized")
+        return cls.session_local()
     
     def get_user_preferences(self, chat_id: int) -> tuple[str, str] | None:
         """Get language preferences for a chat"""
