@@ -7,8 +7,15 @@
     "FLASK_ENV": {
       "description": "Flask environment",
       "value": "production"
+    },
+    "DATABASE_URL": {
+      "description": "PostgreSQL database URL (auto-set by Heroku PostgreSQL addon)",
+      "required": true
     }
   },
+  "addons": [
+    "heroku-postgresql:mini"
+  ],
   "buildpacks": [
     {
       "url": "heroku/python"
