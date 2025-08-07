@@ -278,16 +278,8 @@ class TelegramBot:
             response = f"✅ *Already in {LanguageDetector.SUPPORTED_LANGUAGES.get(target_lang, target_lang)}*\n\n"
             response += f"👤 **{user_name}:**\n"
             response += f"_{text}_"
-            logger.info(f"Already in target language, replacing message {message_id} in chat {chat_id}")
-            
-            # Try to delete the original message
-            if self.delete_message(chat_id, message_id):
-                logger.info(f"Successfully deleted original message, sending formatted response")
-                time.sleep(0.5)  # Small delay to ensure deletion completes
-                self.send_message(chat_id, response)
-            else:
-                logger.warning(f"Failed to delete original message, sending reply instead")
-                self.send_message(chat_id, response)
+            logger.info(f"Already in target language, sending formatted response for chat {chat_id}")
+            self.send_message(chat_id, response)
             return
         
         # Translate the message
@@ -303,32 +295,16 @@ class TelegramBot:
             response += f"🔄 **Translation:**\n"
             response += f"_{translated}_"
             
-            logger.info(f"Translation successful, replacing message {message_id} in chat {chat_id}")
-            
-            # Try to delete the original message
-            if self.delete_message(chat_id, message_id):
-                logger.info(f"Successfully deleted original message, sending formatted response")
-                time.sleep(0.5)  # Small delay to ensure deletion completes
-                self.send_message(chat_id, response)
-            else:
-                logger.warning(f"Failed to delete original message, sending reply instead")
-                self.send_message(chat_id, response)
+            logger.info(f"Translation successful, sending formatted response for chat {chat_id}")
+            self.send_message(chat_id, response)
         else:
             user_name = message['from'].get('first_name', 'User')
             error_response = f"❌ *Translation failed*\n\n"
             error_response += f"👤 **{user_name}:**\n"
             error_response += f"_{text}_\n\n"
             error_response += f"⚠️ **Error:** Unable to translate this text. Please try again."
-            logger.info(f"Translation failed, replacing message {message_id} in chat {chat_id} with error")
-            
-            # Try to delete the original message
-            if self.delete_message(chat_id, message_id):
-                logger.info(f"Successfully deleted original message, sending error response")
-                time.sleep(0.5)  # Small delay to ensure deletion completes
-                self.send_message(chat_id, error_response)
-            else:
-                logger.warning(f"Failed to delete original message, sending error reply instead")
-                self.send_message(chat_id, error_response)
+            logger.info(f"Translation failed, sending error response for chat {chat_id}")
+            self.send_message(chat_id, error_response)
     
     def _handle_callback_query(self, callback_query: Dict) -> None:
         """Handle inline keyboard callback"""
