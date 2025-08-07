@@ -41,6 +41,25 @@ class LanguageSelectionState(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+class MessageTranslation(Base):
+    """Database model for storing message translations to handle edits"""
+    __tablename__ = 'message_translations'
+    
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False)
+    message_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, nullable=False)
+    original_text = Column(Text, nullable=False)
+    translated_text = Column(Text, nullable=False)
+    source_language = Column(String(10), nullable=False)
+    target_language = Column(String(10), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Composite unique constraint to prevent duplicates
+    __table_args__ = (
+        {'sqlite_autoincrement': True} if 'sqlite' in str(Base.metadata.bind.url) else {}
+    )
+
 class DatabaseManager:
     """Database manager for the bot"""
     
@@ -81,7 +100,7 @@ class DatabaseManager:
                     SELECT table_name 
                     FROM information_schema.tables 
                     WHERE table_schema = 'public' 
-                    AND table_name IN ('user_preferences', 'language_selection_state')
+                    AND table_name IN ('user_preferences', 'language_selection_state', 'message_translations')
                 """))
                 existing_tables = [row[0] for row in result]
                 
@@ -273,3 +292,67 @@ class DatabaseManager:
                 session.rollback()
                 logger.error(f"Error clearing selection state for chat {chat_id}: {e}")
                 return False
+    
+    def store_message_translation(self, chat_id: int, message_id: int, user_id: int, 
+                                 original_text: str, translated_text: str, 
+                                 source_language: str, target_language: str) -> bool:
+        """Store a message translation for later retrieval on edit"""
+        with self.get_session() as session:
+            try:
+                # Check if translation already exists for this message
+                existing = session.query(MessageTranslation).filter(
+                    MessageTranslation.chat_id == chat_id,
+                    MessageTranslation.message_id == message_id
+                ).first()
+                
+                if existing:
+                    # Update existing translation
+                    existing.original_text = original_text
+                    existing.translated_text = translated_text
+                    existing.source_language = source_language
+                    existing.target_language = target_language
+                else:
+                    # Create new translation record
+                    new_translation = MessageTranslation(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        user_id=user_id,
+                        original_text=original_text,
+                        translated_text=translated_text,
+                        source_language=source_language,
+                        target_language=target_language
+                    )
+                    session.add(new_translation)
+                
+                session.commit()
+                logger.info(f"Stored translation for message {message_id} in chat {chat_id}")
+                return True
+                
+            except Exception as e:
+                session.rollback()
+                logger.error(f"Error storing translation for message {message_id} in chat {chat_id}: {e}")
+                return False
+    
+    def get_message_translation(self, chat_id: int, message_id: int) -> dict | None:
+        """Get stored translation for a specific message"""
+        with self.get_session() as session:
+            try:
+                translation = session.query(MessageTranslation).filter(
+                    MessageTranslation.chat_id == chat_id,
+                    MessageTranslation.message_id == message_id
+                ).first()
+                
+                if translation:
+                    return {
+                        'original_text': translation.original_text,
+                        'translated_text': translation.translated_text,
+                        'source_language': translation.source_language,
+                        'target_language': translation.target_language,
+                        'user_id': translation.user_id,
+                        'created_at': translation.created_at
+                    }
+                return None
+                
+            except Exception as e:
+                logger.error(f"Error getting translation for message {message_id} in chat {chat_id}: {e}")
+                return None
