@@ -31,7 +31,7 @@ class TestBotController(unittest.TestCase):
         self.assertEqual(result["status"], "active")
         self.assertEqual(result["service"], "Telegram Language Buddy Bot")
         self.assertIn("timestamp", result)
-        self.assertEqual(result["version"], "1.0.0")
+        self.assertEqual(result["version"], "3.0.0")
         
         # Verify timestamp is valid ISO format
         try:
