@@ -51,20 +51,15 @@ class VoiceTranscriber:
         """Set up Google credentials from JSON string"""
         try:
             import json
-            import tempfile
             from google.oauth2 import service_account
             
-            # Parse the JSON credentials
+            # Parse the JSON credentials to validate they're correct
             credentials_info = json.loads(self.google_credentials_json)
             
-            # Create credentials object
+            # Create credentials object to validate
             credentials = service_account.Credentials.from_service_account_info(credentials_info)
             
-            # Set the credentials for the Google Cloud client library
-            import google.auth
-            google.auth.default_credentials = credentials
-            
-            logger.info("Successfully set up Google credentials from JSON")
+            logger.info("Successfully validated Google credentials from JSON")
             
         except Exception as e:
             logger.error(f"Failed to set up Google credentials from JSON: {e}")
@@ -196,7 +191,19 @@ class VoiceTranscriber:
         try:
             self._respect_rate_limit('google_speech')
             
-            client = speech.SpeechClient()
+            # Create credentials from JSON if available
+            credentials = None
+            if self.google_credentials_json:
+                import json
+                from google.oauth2 import service_account
+                credentials_info = json.loads(self.google_credentials_json)
+                credentials = service_account.Credentials.from_service_account_info(credentials_info)
+            
+            # Create client with credentials
+            if credentials:
+                client = speech.SpeechClient(credentials=credentials)
+            else:
+                client = speech.SpeechClient()
             
             with open(audio_path, "rb") as f:
                 content = f.read()
