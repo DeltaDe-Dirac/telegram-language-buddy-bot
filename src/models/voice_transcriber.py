@@ -269,12 +269,11 @@ class VoiceTranscriber:
             aai.settings.api_key = self.assemblyai_api_key
             transcriber = aai.Transcriber()
             
-            # Map language hints to AssemblyAI language codes
+            # Map language hints to AssemblyAI language codes (only supported languages)
+            # AssemblyAI supports: 'de', 'en', 'en_au', 'en_uk', 'en_us', 'es', 'fi', 'fr', 'hi', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ru', 'tr', 'uk', 'vi', 'zh'
             language_mapping = {
-                'he': 'he',
                 'ru': 'ru',
                 'en': 'en',
-                'ar': 'ar',
                 'fr': 'fr',
                 'es': 'es',
                 'de': 'de',
@@ -283,69 +282,41 @@ class VoiceTranscriber:
                 'ja': 'ja',
                 'ko': 'ko',
                 'zh': 'zh',
-                'th': 'th',
                 'hi': 'hi',
-                'bn': 'bn',
-                'ta': 'ta',
-                'te': 'te',
-                'kn': 'kn',
-                'ml': 'ml',
-                'gu': 'gu',
-                'pa': 'pa',
-                'or': 'or',
-                'si': 'si',
-                'my': 'my',
-                'ka': 'ka',
-                'am': 'am',
                 'uk': 'uk',
-                'bg': 'bg',
-                'sr': 'sr',
-                'el': 'el',
-                'fa': 'fa',
-                'ur': 'ur',
                 'vi': 'vi',
-                'id': 'id',
-                'ms': 'ms',
-                'tl': 'tl',
-                'cs': 'cs',
-                'sk': 'sk',
-                'hu': 'hu',
-                'ro': 'ro',
-                'hr': 'hr',
-                'sl': 'sl',
-                'et': 'et',
-                'lv': 'lv',
-                'lt': 'lt',
                 'pl': 'pl',
                 'nl': 'nl',
-                'sv': 'sv',
-                'da': 'da',
-                'no': 'no',
                 'fi': 'fi',
                 'tr': 'tr'
             }
             
-            # Use language hint if available, otherwise default to Hebrew
-            lang_code = language_mapping.get(language_hint, 'he') if language_hint else 'he'
+            # Use language hint if available and supported, otherwise don't specify language
+            lang_code = language_mapping.get(language_hint) if language_hint else None
             
             # Enhanced configuration for better language detection
-            config = aai.TranscriptionConfig(
-                language_detection=True,
-                # Add language hints for better accuracy
-                language_code=lang_code,
-                # Additional parameters for better transcription
-                punctuate=True,
-                format_text=True,
-                # Enable diarization for better speaker separation
-                speaker_labels=True,
-                # Improve accuracy for short audio
-                boost_param="high"
-            )
+            config_params = {
+                'language_detection': True,
+                'punctuate': True,
+                'format_text': True,
+                'speaker_labels': True,
+                'boost_param': "high"
+            }
+            
+            # Only add language_code if we have a supported language
+            if lang_code:
+                config_params['language_code'] = lang_code
+                logger.info(f"[INFO] Using AssemblyAI with language hint: {lang_code}")
+            else:
+                logger.info(f"[INFO] Using AssemblyAI without language hint (unsupported language: {language_hint})")
+            
+            config = aai.TranscriptionConfig(**config_params)
             
             transcript = transcriber.transcribe(audio_path, config=config)
             
             if transcript.text:
-                logger.info(f"[SUCCESS] AssemblyAI transcription ({lang_code}): '{transcript.text[:50]}...'")
+                lang_info = f"({lang_code})" if lang_code else "(auto-detected)"
+                logger.info(f"[SUCCESS] AssemblyAI transcription {lang_info}: '{transcript.text[:50]}...'")
                 return transcript.text.strip()
             else:
                 logger.warning("[WARN] AssemblyAI returned empty transcription")
