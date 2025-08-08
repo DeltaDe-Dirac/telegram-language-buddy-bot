@@ -1,7 +1,8 @@
 import logging
 import asyncio
 import requests
-from typing import Optional
+from typing import Optional, Dict, Tuple
+import unicodedata
 
 logger = logging.getLogger(__name__)
 
@@ -9,8 +10,37 @@ class FreeTranslator:
     """Free translation using Google Translate"""
     
     def __init__(self):
-        # initialization of the translator
-        pass
+        # Language script detection ranges
+        self.script_ranges = {
+            'he': range(0x0590, 0x0600),  # Hebrew
+            'ar': range(0x0600, 0x0700),  # Arabic
+            'th': range(0x0E00, 0x0E80),  # Thai
+            'hi': range(0x0900, 0x0980),  # Devanagari (Hindi)
+            'bn': range(0x0980, 0x0A00),  # Bengali
+            'ta': range(0x0B80, 0x0C00),  # Tamil
+            'te': range(0x0C00, 0x0C80),  # Telugu
+            'kn': range(0x0C80, 0x0D00),  # Kannada
+            'ml': range(0x0D00, 0x0D80),  # Malayalam
+            'gu': range(0x0A80, 0x0B00),  # Gujarati
+            'pa': range(0x0A00, 0x0A80),  # Gurmukhi (Punjabi)
+            'or': range(0x0B00, 0x0B80),  # Odia
+            'si': range(0x0D80, 0x0E00),  # Sinhala
+            'my': range(0x1000, 0x1100),  # Myanmar
+            'ka': range(0x10A0, 0x1100),  # Georgian
+            'am': range(0x1200, 0x1380),  # Ethiopic
+            'ko': range(0xAC00, 0xD7AF),  # Hangul (Korean)
+            'ja': range(0x3040, 0x3100),  # Hiragana
+            'zh': range(0x4E00, 0x9FFF),  # CJK Unified Ideographs
+        }
+        
+        # Language code mapping for googletrans inconsistencies
+        self.language_mapping = {
+            'iw': 'he',  # googletrans returns 'iw' for Hebrew
+            'zh-cn': 'zh',  # Simplified Chinese
+            'zh-tw': 'zh',  # Traditional Chinese
+            'zh-hk': 'zh',  # Hong Kong Chinese
+            'zh-sg': 'zh',  # Singapore Chinese
+        }
     
     def translate_text(self, text: str, target_lang: str, source_lang: str = 'auto') -> Optional[str]:
         """Translate text using Google Translate"""
@@ -69,7 +99,7 @@ class FreeTranslator:
             return None
     
     def detect_language(self, text: str) -> str:
-        """Detect language of text"""
+        """Detect language of text using multiple methods for accuracy"""
         try:
             from googletrans import Translator
             translator = Translator()
@@ -77,111 +107,85 @@ class FreeTranslator:
             # Clean the text first
             clean_text = ' '.join(text.split())
             
-            # Run the async detection
+            # Method 1: Google Translate detection
             detection = asyncio.run(translator.detect(clean_text))
             detected_code = detection.lang
+            confidence = getattr(detection, 'confidence', 0.0)
             
-            # Map googletrans language codes to our supported codes
-            code_mapping = {
-                'iw': 'he',  # googletrans returns 'iw' for Hebrew
-                'zh-cn': 'zh',  # Simplified Chinese
-                'zh-tw': 'zh',  # Traditional Chinese
-                'zh-hk': 'zh',  # Hong Kong Chinese
-                'zh-sg': 'zh',  # Singapore Chinese
-            }
+            # Method 2: Unicode script analysis
+            script_detection = self._detect_script_by_unicode(clean_text)
             
-            # Convert to our supported code if mapping exists
-            mapped_code = code_mapping.get(detected_code, detected_code)
+            # Method 3: Cross-validate and resolve conflicts
+            final_code = self._resolve_language_detection(
+                detected_code, confidence, script_detection, clean_text
+            )
             
-            # Enhanced detection for transliterated text from voice transcription
-            if self._is_likely_transliterated(clean_text, mapped_code):
-                # Try to detect the actual language from transliterated text
-                corrected_lang = self._detect_language_from_transliterated(clean_text)
-                if corrected_lang:
-                    logger.info(f"✅ Transliterated text detected as {mapped_code}, corrected to {corrected_lang}")
-                    return corrected_lang
+            logger.info(f"Language detection: Google='{detected_code}' (conf={confidence:.2f}), "
+                       f"Script='{script_detection}', Final='{final_code}'")
             
-            logger.info(f"googletrans detected '{detected_code}', mapped to '{mapped_code}'")
+            return final_code
             
-            if detected_code != mapped_code:
-                logger.info(f"✅ Language code mapped: {detected_code} → {mapped_code}")
-            else:
-                logger.info(f"ℹ️  No mapping needed for: {detected_code}")
-            
-            return mapped_code
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Language detection failed: {e}")
             return 'unknown'
     
-    def _is_likely_transliterated(self, text: str, detected_language: str) -> bool:
-        """Check if text is likely transliterated from voice transcription"""
-        # Languages that should have non-Latin scripts
-        non_latin_scripts = {
-            'he', 'ar', 'ru', 'zh', 'ja', 'ko', 'th', 'hi', 'bn', 'ta', 'te', 
-            'gu', 'kn', 'ml', 'si', 'fa', 'ur', 'el', 'bg', 'uk', 'sr', 'mk', 
-            'mn', 'ka', 'hy', 'am', 'ne'
-        }
+    def _detect_script_by_unicode(self, text: str) -> Optional[str]:
+        """Detect script/language using Unicode character ranges"""
+        if not text:
+            return None
         
-        if detected_language not in non_latin_scripts:
-            return False  # Language uses Latin script, so no transliteration issue
+        script_counts = {}
+        total_chars = 0
         
-        # Check if text contains mostly Latin characters when it should contain non-Latin
-        latin_chars = sum(1 for c in text if c.isalpha() and ord(c) < 128)
-        total_alpha_chars = sum(1 for c in text if c.isalpha())
-        
-        if total_alpha_chars == 0:
-            return False
-        
-        latin_ratio = latin_chars / total_alpha_chars
-        logger.info(f"Transliteration analysis for {detected_language}: {latin_chars}/{total_alpha_chars} chars ({latin_ratio:.2%} Latin)")
-        
-        # If more than 80% are Latin characters, it's likely transliterated
-        return latin_ratio > 0.8
-    
-    def _detect_language_from_transliterated(self, text: str) -> Optional[str]:
-        """Detect language from transliterated text using common patterns"""
-        text_lower = text.lower()
-        
-        # Common transliteration patterns for different languages
-        language_patterns = {
-            'he': ['shalom', 'mashlomha', 'toda', 'bevakasha', 'ken', 'lo', 'ani', 'ata', 'at'],
-            'ru': ['privet', 'kak dela', 'horosho', 'plokho', 'da', 'net', 'spasibo', 'pozhaluysta'],
-            'ar': ['marhaba', 'ahlan', 'shukran', 'afwan', 'naam', 'la', 'ana', 'anta', 'anti'],
-            'hi': ['namaste', 'dhanyavad', 'kripya', 'haan', 'nahi', 'main', 'aap', 'tum'],
-            'th': ['sawadee', 'khob khun', 'khop khun', 'chai', 'mai', 'chan', 'khun', 'phom'],
-            'el': ['yassou', 'efcharisto', 'parakalo', 'ne', 'oxi', 'ego', 'esi', 'esu'],
-            'fa': ['salam', 'merci', 'lotfan', 'bale', 'na', 'man', 'to', 'shoma'],
-            'ur': ['assalam', 'shukriya', 'mehrbani', 'haan', 'nahi', 'main', 'aap', 'tum']
-        }
-        
-        # Count matches for each language
-        language_scores = {}
-        for lang, patterns in language_patterns.items():
-            score = 0
-            for pattern in patterns:
-                if pattern in text_lower:
-                    score += 1
-            if score > 0:
-                language_scores[lang] = score
-        
-        # Return the language with the highest score if significant
-        if language_scores:
-            best_lang = max(language_scores, key=language_scores.get)
-            best_score = language_scores[best_lang]
+        for char in text:
+            if char.isspace() or unicodedata.category(char).startswith('P'):
+                continue  # Skip whitespace and punctuation
+                
+            char_code = ord(char)
+            total_chars += 1
             
-            # Require at least 2 pattern matches to be confident
-            if best_score >= 2:
-                logger.info(f"Detected {best_lang} from transliterated patterns (score: {best_score})")
-                return best_lang
+            for lang_code, unicode_range in self.script_ranges.items():
+                if char_code in unicode_range:
+                    script_counts[lang_code] = script_counts.get(lang_code, 0) + 1
+                    break
+        
+        if not script_counts or total_chars == 0:
+            return None
+        
+        # Find the script with the highest percentage
+        best_script = max(script_counts.items(), key=lambda x: x[1])
+        script_percentage = best_script[1] / total_chars
+        
+        # Only return if we have a significant percentage of characters in this script
+        if script_percentage >= 0.3:  # At least 30% of characters
+            logger.info(f"Unicode script detection: {best_script[0]} ({script_percentage:.2%})")
+            return best_script[0]
         
         return None
     
-    def _contains_hebrew_characters(self, text: str) -> bool:
-        """Check if text contains Hebrew characters"""
-        # Hebrew Unicode range: U+0590 to U+05FF
-        hebrew_range = range(0x0590, 0x0600)
+    def _resolve_language_detection(self, google_code: str, confidence: float, 
+                                  script_code: Optional[str], text: str) -> str:
+        """Resolve conflicts between different detection methods"""
         
-        for char in text:
-            if ord(char) in hebrew_range:
-                return True
-        return False 
+        # Apply language code mapping
+        mapped_code = self.language_mapping.get(google_code, google_code)
+        
+        # If confidence is high and no script conflict, trust Google
+        if confidence > 0.8 and (script_code is None or script_code == mapped_code):
+            return mapped_code
+        
+        # If script detection found something and Google confidence is low, trust script
+        if script_code and confidence < 0.6:
+            logger.info(f"Low confidence Google detection ({confidence:.2f}), "
+                       f"trusting script detection: {script_code}")
+            return script_code
+        
+        # If there's a conflict between Google and script detection
+        if script_code and script_code != mapped_code:
+            # Use script detection for specific scripts that Google often misidentifies
+            if script_code in ['he', 'ar', 'th', 'ko', 'ja', 'zh']:
+                logger.info(f"Google misidentified {script_code} as {mapped_code}, "
+                           f"correcting to {script_code}")
+                return script_code
+        
+        return mapped_code 
