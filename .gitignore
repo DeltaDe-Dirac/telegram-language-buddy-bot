@@ -220,3 +220,6 @@ bot_data.db
 !tsconfig.json
 !jsconfig.json
 !app.json
+
+# SonarQube
+.scannerwork/
