@@ -311,9 +311,8 @@ class TelegramBot:
             elif detected_lang == lang2:
                 target_lang = lang1
             else:
-                # Language not in pair, just show transcription
-                response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_\n\n⚠️ *Language '{detected_lang}' not in your language pair ({lang1}, {lang2})*"
-                self.send_message(chat_id, response)
+                # Ignore translation if detected language is neither of the pair (consistent with text translation)
+                logger.info(f"Detected language '{detected_lang}' not in pair ({lang1}, {lang2}), ignoring voice translation")
                 return
             
             # Translate the transcription
