@@ -150,8 +150,15 @@ class VoiceTranscriber:
             )
             
             if transcript.text:
-                logger.info(f"[SUCCESS] AssemblyAI transcription: '{transcript.text[:50]}...'")
-                return transcript.text.strip()
+                # Check if the transcription is in the correct script for the detected language
+                detected_lang = transcript.language_code
+                if detected_lang and self._is_transliterated_to_english(transcript.text, detected_lang):
+                    logger.info(f"[INFO] {detected_lang} detected but transcribed in English letters: '{transcript.text[:50]}...'")
+                    # Try alternative transcription or mark for proper handling
+                    return self._handle_transliterated_transcription(transcript.text, detected_lang, audio_path)
+                else:
+                    logger.info(f"[SUCCESS] AssemblyAI transcription: '{transcript.text[:50]}...'")
+                    return transcript.text.strip()
             else:
                 logger.warning("[WARN] AssemblyAI returned empty transcription")
                 return None
@@ -159,6 +166,51 @@ class VoiceTranscriber:
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"[ERROR] AssemblyAI transcription failed: {e}")
             return None
+    
+    def _is_transliterated_to_english(self, text: str, detected_language: str) -> bool:
+        """Check if text appears to be transliterated to English letters instead of original script"""
+        # Languages that should have non-Latin scripts
+        non_latin_scripts = {
+            'he': 'Hebrew', 'ar': 'Arabic', 'ru': 'Cyrillic', 'zh': 'Chinese',
+            'ja': 'Japanese', 'ko': 'Korean', 'th': 'Thai', 'hi': 'Devanagari',
+            'bn': 'Bengali', 'ta': 'Tamil', 'te': 'Telugu', 'gu': 'Gujarati',
+            'kn': 'Kannada', 'ml': 'Malayalam', 'si': 'Sinhala', 'fa': 'Persian',
+            'ur': 'Urdu', 'el': 'Greek', 'bg': 'Cyrillic', 'uk': 'Cyrillic',
+            'sr': 'Cyrillic', 'mk': 'Cyrillic', 'mn': 'Cyrillic', 'ka': 'Georgian',
+            'hy': 'Armenian', 'am': 'Ethiopic', 'ne': 'Devanagari', 'si': 'Sinhala'
+        }
+        
+        if detected_language not in non_latin_scripts:
+            return False  # Language uses Latin script, so no transliteration issue
+        
+        # Check if text contains mostly Latin characters when it should contain non-Latin
+        latin_chars = sum(1 for c in text if c.isalpha() and ord(c) < 128)
+        total_alpha_chars = sum(1 for c in text if c.isalpha())
+        
+        if total_alpha_chars == 0:
+            return False
+        
+        latin_ratio = latin_chars / total_alpha_chars
+        logger.info(f"Script analysis for {detected_language}: {latin_chars}/{total_alpha_chars} chars ({latin_ratio:.2%} Latin)")
+        
+        # If more than 80% are Latin characters, it's likely transliterated
+        return latin_ratio > 0.8
+    
+    def _handle_transliterated_transcription(self, transliterated_text: str, detected_language: str, audio_path: str) -> str:
+        """Handle transcription that was transliterated to English letters"""
+        try:
+            logger.info(f"[INFO] {detected_language} transliterated text detected: '{transliterated_text[:50]}...'")
+            
+            # For now, return the transliterated text
+            # The language detection in the bot will need to handle transliterated text
+            # In the future, we could implement script conversion or use alternative services
+            
+            logger.info(f"[INFO] Returning transliterated {detected_language} text for language detection")
+            return transliterated_text
+                
+        except Exception as e:
+            logger.error(f"[ERROR] Error handling transliterated transcription: {e}")
+            return transliterated_text
     
     def _transcribe_with_google_speech(self, audio_path: str, language_code: str = None) -> Optional[str]:
         """Full transcription using Google Speech-to-Text"""

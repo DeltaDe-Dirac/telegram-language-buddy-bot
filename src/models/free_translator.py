@@ -74,8 +74,11 @@ class FreeTranslator:
             from googletrans import Translator
             translator = Translator()
             
+            # Clean the text first
+            clean_text = ' '.join(text.split())
+            
             # Run the async detection
-            detection = asyncio.run(translator.detect(text))
+            detection = asyncio.run(translator.detect(clean_text))
             detected_code = detection.lang
             
             # Map googletrans language codes to our supported codes
@@ -90,10 +93,13 @@ class FreeTranslator:
             # Convert to our supported code if mapping exists
             mapped_code = code_mapping.get(detected_code, detected_code)
             
-            # Special handling for Hebrew detection
-            if detected_code == 'hi' and self._contains_hebrew_characters(text):
-                mapped_code = 'he'
-                logger.info(f"✅ Hebrew text incorrectly detected as Hindi, corrected to Hebrew")
+            # Enhanced detection for transliterated text from voice transcription
+            if self._is_likely_transliterated(clean_text, mapped_code):
+                # Try to detect the actual language from transliterated text
+                corrected_lang = self._detect_language_from_transliterated(clean_text)
+                if corrected_lang:
+                    logger.info(f"✅ Transliterated text detected as {mapped_code}, corrected to {corrected_lang}")
+                    return corrected_lang
             
             logger.info(f"googletrans detected '{detected_code}', mapped to '{mapped_code}'")
             
@@ -106,6 +112,69 @@ class FreeTranslator:
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Language detection failed: {e}")
             return 'unknown'
+    
+    def _is_likely_transliterated(self, text: str, detected_language: str) -> bool:
+        """Check if text is likely transliterated from voice transcription"""
+        # Languages that should have non-Latin scripts
+        non_latin_scripts = {
+            'he', 'ar', 'ru', 'zh', 'ja', 'ko', 'th', 'hi', 'bn', 'ta', 'te', 
+            'gu', 'kn', 'ml', 'si', 'fa', 'ur', 'el', 'bg', 'uk', 'sr', 'mk', 
+            'mn', 'ka', 'hy', 'am', 'ne'
+        }
+        
+        if detected_language not in non_latin_scripts:
+            return False  # Language uses Latin script, so no transliteration issue
+        
+        # Check if text contains mostly Latin characters when it should contain non-Latin
+        latin_chars = sum(1 for c in text if c.isalpha() and ord(c) < 128)
+        total_alpha_chars = sum(1 for c in text if c.isalpha())
+        
+        if total_alpha_chars == 0:
+            return False
+        
+        latin_ratio = latin_chars / total_alpha_chars
+        logger.info(f"Transliteration analysis for {detected_language}: {latin_chars}/{total_alpha_chars} chars ({latin_ratio:.2%} Latin)")
+        
+        # If more than 80% are Latin characters, it's likely transliterated
+        return latin_ratio > 0.8
+    
+    def _detect_language_from_transliterated(self, text: str) -> Optional[str]:
+        """Detect language from transliterated text using common patterns"""
+        text_lower = text.lower()
+        
+        # Common transliteration patterns for different languages
+        language_patterns = {
+            'he': ['shalom', 'mashlomha', 'toda', 'bevakasha', 'ken', 'lo', 'ani', 'ata', 'at'],
+            'ru': ['privet', 'kak dela', 'horosho', 'plokho', 'da', 'net', 'spasibo', 'pozhaluysta'],
+            'ar': ['marhaba', 'ahlan', 'shukran', 'afwan', 'naam', 'la', 'ana', 'anta', 'anti'],
+            'hi': ['namaste', 'dhanyavad', 'kripya', 'haan', 'nahi', 'main', 'aap', 'tum'],
+            'th': ['sawadee', 'khob khun', 'khop khun', 'chai', 'mai', 'chan', 'khun', 'phom'],
+            'el': ['yassou', 'efcharisto', 'parakalo', 'ne', 'oxi', 'ego', 'esi', 'esu'],
+            'fa': ['salam', 'merci', 'lotfan', 'bale', 'na', 'man', 'to', 'shoma'],
+            'ur': ['assalam', 'shukriya', 'mehrbani', 'haan', 'nahi', 'main', 'aap', 'tum']
+        }
+        
+        # Count matches for each language
+        language_scores = {}
+        for lang, patterns in language_patterns.items():
+            score = 0
+            for pattern in patterns:
+                if pattern in text_lower:
+                    score += 1
+            if score > 0:
+                language_scores[lang] = score
+        
+        # Return the language with the highest score if significant
+        if language_scores:
+            best_lang = max(language_scores, key=language_scores.get)
+            best_score = language_scores[best_lang]
+            
+            # Require at least 2 pattern matches to be confident
+            if best_score >= 2:
+                logger.info(f"Detected {best_lang} from transliterated patterns (score: {best_score})")
+                return best_lang
+        
+        return None
     
     def _contains_hebrew_characters(self, text: str) -> bool:
         """Check if text contains Hebrew characters"""

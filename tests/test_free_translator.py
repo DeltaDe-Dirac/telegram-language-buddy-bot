@@ -144,6 +144,41 @@ class TestFreeTranslator(unittest.TestCase):
         # Test with non-string text
         result = self.translator.detect_language(123)
         self.assertEqual(result, "unknown")
+    
+    def test_is_likely_transliterated(self):
+        """Test transliteration detection"""
+        # Test with transliterated Hebrew (should be detected as transliterated)
+        self.assertTrue(self.translator._is_likely_transliterated("shalom mashlomha", "he"))
+        
+        # Test with actual Hebrew characters (should not be detected as transliterated)
+        self.assertFalse(self.translator._is_likely_transliterated("שלום משלומך", "he"))
+        
+        # Test with English text (should not be detected as transliterated)
+        self.assertFalse(self.translator._is_likely_transliterated("hello world", "en"))
+        
+        # Test with transliterated Russian (should be detected as transliterated)
+        self.assertTrue(self.translator._is_likely_transliterated("privet kak dela", "ru"))
+        
+        # Test with actual Cyrillic (should not be detected as transliterated)
+        self.assertFalse(self.translator._is_likely_transliterated("привет как дела", "ru"))
+    
+    def test_detect_language_from_transliterated(self):
+        """Test language detection from transliterated text"""
+        # Test Hebrew transliteration
+        result = self.translator._detect_language_from_transliterated("shalom mashlomha toda")
+        self.assertEqual(result, "he")
+        
+        # Test Russian transliteration
+        result = self.translator._detect_language_from_transliterated("privet kak dela spasibo")
+        self.assertEqual(result, "ru")
+        
+        # Test Arabic transliteration
+        result = self.translator._detect_language_from_transliterated("marhaba shukran afwan")
+        self.assertEqual(result, "ar")
+        
+        # Test with insufficient patterns (should return None)
+        result = self.translator._detect_language_from_transliterated("hello world")
+        self.assertIsNone(result)
 
 
 if __name__ == '__main__':
