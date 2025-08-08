@@ -21,6 +21,12 @@ try:
 except ImportError:
     GOOGLE_SPEECH_AVAILABLE = False
 
+try:
+    from .whisper_transcriber import WhisperTranscriber
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 class VoiceTranscriber:
@@ -30,6 +36,7 @@ class VoiceTranscriber:
         self.rate_limits = {
             'assemblyai': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
             'google_speech': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
+            'whisper': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
         }
         
         # API keys and endpoints
@@ -37,6 +44,12 @@ class VoiceTranscriber:
         
         # Handle Google credentials - JSON string only
         self.google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+        
+        # Initialize Whisper transcriber
+        if WHISPER_AVAILABLE:
+            self.whisper_transcriber = WhisperTranscriber()
+        else:
+            self.whisper_transcriber = None
         
         # Set up Google credentials if JSON is provided
         if self.google_credentials_json:
@@ -72,6 +85,7 @@ class VoiceTranscriber:
         services = {
             'assemblyai': bool(self.assemblyai_api_key and ASSEMBLYAI_AVAILABLE),
             'google_speech': bool(google_creds_available and GOOGLE_SPEECH_AVAILABLE),
+            'whisper': bool(self.whisper_transcriber and self.whisper_transcriber.available),
         }
         
         # Log service availability for debugging
@@ -256,14 +270,21 @@ class VoiceTranscriber:
         try:
             transcript = None
             
-            # Step 1: Try AssemblyAI (primary service)
+            # Step 1: Try Whisper API first (best for Hebrew and many languages)
+            if self.services_available.get('whisper', False):
+                logger.info("[INFO] Trying Whisper API transcription...")
+                transcript = self.whisper_transcriber.transcribe_audio(temp_audio_path)
+                if transcript:
+                    return transcript
+            
+            # Step 2: Try AssemblyAI (good fallback)
             if self.services_available.get('assemblyai', False):
                 logger.info("[INFO] Trying AssemblyAI transcription...")
                 transcript = self._transcribe_with_assemblyai(temp_audio_path)
                 if transcript:
                     return transcript
             
-            # Step 2: Try Google Speech-to-Text
+            # Step 3: Try Google Speech-to-Text (final fallback)
             if self.services_available.get('google_speech', False):
                 logger.info("[INFO] Trying Google Speech-to-Text...")
                 
@@ -295,5 +316,5 @@ class VoiceTranscriber:
                 }
                 for service, info in self.rate_limits.items()
             },
-            'primary_services': ['assemblyai', 'google_speech']
+            'primary_services': ['whisper', 'assemblyai', 'google_speech']
         }
