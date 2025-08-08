@@ -112,106 +112,6 @@ class VoiceTranscriber:
             logger.error(f"Error saving audio to temp file: {e}")
             return None
     
-    def _detect_language_assemblyai(self, audio_path: str) -> Optional[str]:
-        """Quickly detect spoken language using AssemblyAI"""
-        try:
-            self._respect_rate_limit('assemblyai')
-            
-            aai.settings.api_key = self.assemblyai_api_key
-            transcriber = aai.Transcriber()
-            
-            transcript = transcriber.transcribe(
-                audio_path,
-                config=aai.TranscriptionConfig(language_detection=True)
-            )
-            
-            # AssemblyAI doesn't provide language_code in the current API
-            # We'll rely on the language detection in the translator instead
-            logger.info(f"[INFO] AssemblyAI transcription completed, language detection will be done by translator")
-            return None
-                
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
-            logger.error(f"[ERROR] AssemblyAI language detection failed: {e}")
-            return None
-    
-    def _transcribe_with_assemblyai(self, audio_path: str) -> Optional[str]:
-        """Full transcription with AssemblyAI (auto language detection)"""
-        try:
-            self._respect_rate_limit('assemblyai')
-            
-            aai.settings.api_key = self.assemblyai_api_key
-            transcriber = aai.Transcriber()
-            
-            # Enhanced configuration for better language detection
-            config = aai.TranscriptionConfig(
-                language_detection=True,
-                # Add language hints for better accuracy
-                language_code="he",  # Try Hebrew first
-                # Additional parameters for better transcription
-                punctuate=True,
-                format_text=True,
-                # Enable diarization for better speaker separation
-                speaker_labels=True,
-                # Improve accuracy for short audio
-                boost_param="high"
-            )
-            
-            transcript = transcriber.transcribe(audio_path, config=config)
-            
-            if transcript.text:
-                logger.info(f"[SUCCESS] AssemblyAI transcription: '{transcript.text[:50]}...'")
-                return transcript.text.strip()
-            else:
-                logger.warning("[WARN] AssemblyAI returned empty transcription")
-                return None
-                
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
-            logger.error(f"[ERROR] AssemblyAI transcription failed: {e}")
-            return None
-    
-    def _transcribe_with_google_speech(self, audio_path: str) -> Optional[str]:
-        """Full transcription using Google Speech-to-Text"""
-        try:
-            self._respect_rate_limit('google_speech')
-            
-            client = speech.SpeechClient()
-            
-            with open(audio_path, "rb") as f:
-                content = f.read()
-            
-            audio = speech.RecognitionAudio(content=content)
-            
-            # Enhanced configuration for better language detection
-            config = speech.RecognitionConfig(
-                encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
-                sample_rate_hertz=48000,  # Telegram voice messages are typically 48kHz
-                # Try Hebrew first, then auto-detect
-                language_code="he-IL",  # Hebrew (Israel)
-                alternative_language_codes=["en-US", "ru-RU", "ar-IL"],  # Fallback languages
-                enable_automatic_punctuation=True,
-                enable_word_time_offsets=True,
-                enable_word_confidence=True,
-                # Use enhanced models for better accuracy
-                use_enhanced=True
-            )
-            
-            response = client.recognize(config=config, audio=audio)
-            
-            if response.results:
-                transcript = " ".join([result.alternatives[0].transcript for result in response.results])
-                logger.info(f"[SUCCESS] Google Speech transcription: '{transcript[:50]}...'")
-                return transcript.strip()
-            else:
-                logger.warning("[WARN] Google Speech returned empty transcription")
-                return None
-                
-        except (GoogleAPICallError, ResourceExhausted) as e:
-            logger.error(f"[ERROR] Google Speech API failed: {e}")
-            return None
-        except (OSError, ImportError, AttributeError, ValueError) as e:
-            logger.error(f"[ERROR] Google Speech unexpected error: {e}")
-            return None
-    
     def transcribe_voice_message(self, file_id: str, language_hint: Optional[str] = None) -> Optional[str]:
         """Transcribe voice message with intelligent fallback strategy"""
         logger.info(f"Starting voice transcription for file: {file_id}")
@@ -294,7 +194,7 @@ class VoiceTranscriber:
             # Use language hint if available and supported, otherwise don't specify language
             lang_code = language_mapping.get(language_hint) if language_hint else None
             
-            # Enhanced configuration for better language detection
+            # Enhanced configuration for better language detection and error handling
             config_params = {
                 'language_detection': True,
                 'punctuate': True,
@@ -312,14 +212,40 @@ class VoiceTranscriber:
             
             config = aai.TranscriptionConfig(**config_params)
             
-            transcript = transcriber.transcribe(audio_path, config=config)
-            
-            if transcript.text:
-                lang_info = f"({lang_code})" if lang_code else "(auto-detected)"
-                logger.info(f"[SUCCESS] AssemblyAI transcription {lang_info}: '{transcript.text[:50]}...'")
-                return transcript.text.strip()
-            else:
-                logger.warning("[WARN] AssemblyAI returned empty transcription")
+            # Add better error handling for AssemblyAI
+            try:
+                transcript = transcriber.transcribe(audio_path, config=config)
+                
+                if transcript and transcript.text:
+                    lang_info = f"({lang_code})" if lang_code else "(auto-detected)"
+                    logger.info(f"[SUCCESS] AssemblyAI transcription {lang_info}: '{transcript.text[:50]}...'")
+                    return transcript.text.strip()
+                else:
+                    logger.warning("[WARN] AssemblyAI returned empty transcription")
+                    return None
+                    
+            except Exception as api_error:
+                logger.error(f"[ERROR] AssemblyAI API error: {api_error}")
+                # Check if it's a 400 error (bad request) and try without language hint
+                if "400" in str(api_error) and lang_code:
+                    logger.info("[INFO] Retrying AssemblyAI without language hint due to 400 error")
+                    try:
+                        # Retry without language hint
+                        retry_config = aai.TranscriptionConfig(
+                            language_detection=True,
+                            punctuate=True,
+                            format_text=True,
+                            speaker_labels=True,
+                            boost_param="high"
+                        )
+                        transcript = transcriber.transcribe(audio_path, config=retry_config)
+                        
+                        if transcript and transcript.text:
+                            logger.info(f"[SUCCESS] AssemblyAI retry transcription: '{transcript.text[:50]}...'")
+                            return transcript.text.strip()
+                    except Exception as retry_error:
+                        logger.error(f"[ERROR] AssemblyAI retry failed: {retry_error}")
+                
                 return None
                 
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:

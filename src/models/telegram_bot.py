@@ -283,12 +283,28 @@ class TelegramBot:
             transcription = self.voice_transcriber.transcribe_voice_message(file_id, language_hint=lang1)
             
             if not transcription:
+                # Check service status to provide more specific error messages
+                service_status = self.voice_transcriber.get_service_status()
+                available_services = sum(service_status['services_available'].values())
+                
                 error_msg = f"❌ *Voice transcription failed*\n\n👤 **{user_name}:**\n⚠️ **Error:** Unable to transcribe this voice message.\n\n"
-                error_msg += "🔧 **Possible reasons:**\n"
-                error_msg += "• Audio quality is too low\n"
-                error_msg += "• No speech detected\n"
-                error_msg += "• All transcription services are temporarily unavailable\n\n"
-                error_msg += "💡 **Tip:** Try sending a text message instead."
+                
+                if available_services == 0:
+                    error_msg += "🔧 **Service Status:** No transcription services are currently available.\n"
+                    error_msg += "• AssemblyAI API key may be missing or invalid\n"
+                    error_msg += "• Google Speech credentials may be missing or invalid\n\n"
+                else:
+                    error_msg += "🔧 **Possible reasons:**\n"
+                    error_msg += "• Audio quality is too low\n"
+                    error_msg += "• No speech detected\n"
+                    error_msg += "• Audio format not supported\n"
+                    error_msg += "• Voice message too short (less than 1 second)\n\n"
+                
+                error_msg += "💡 **Tips:**\n"
+                error_msg += "• Try sending a longer voice message\n"
+                error_msg += "• Speak clearly and avoid background noise\n"
+                error_msg += "• Try sending a text message instead"
+                
                 self.send_message(chat_id, error_msg)
                 return
             
@@ -311,8 +327,11 @@ class TelegramBot:
                 target_lang = lang1
                 logger.info(f"Translating voice {lang2} -> {lang1}")
             else:
-                # Ignore translation if detected language is neither of the pair (consistent with text translation)
-                logger.info(f"Detected language '{detected_lang}' not in pair ({lang1}, {lang2}), ignoring voice translation")
+                # Show transcription even if language detection fails
+                logger.info(f"Detected language '{detected_lang}' not in pair ({lang1}, {lang2}), showing transcription only")
+                response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_\n\n"
+                response += f"⚠️ **Note:** Detected language '{detected_lang}' is not in your language pair ({lang1}-{lang2})"
+                self.send_message(chat_id, response)
                 return
             
             # Don't translate if already in target language
@@ -346,16 +365,20 @@ class TelegramBot:
                 logger.info(f"Voice translation successful, sending formatted response for chat {chat_id}")
                 self.send_message(chat_id, response)
             else:
-                error_response = "❌ *Voice translation failed*\n\n"
+                # Show transcription even if translation fails
+                error_response = "🎤 *Voice Transcription*\n\n"
                 error_response += f"👤 **{user_name}:**\n"
                 error_response += f"_{transcription}_\n\n"
-                error_response += "⚠️ **Error:** Unable to translate this voice message. Please try again."
-                logger.info(f"Voice translation failed, sending error response for chat {chat_id}")
+                error_response += "⚠️ **Translation failed:** Unable to translate this voice message.\n"
+                error_response += "💡 **Tip:** Try sending a text message for translation."
+                logger.info(f"Voice translation failed, sending transcription with error note for chat {chat_id}")
                 self.send_message(chat_id, error_response)
                 
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Error processing voice message: {e}")
-            error_msg = f"❌ *Voice processing error*\n\n👤 **{user_name}:**\n⚠️ **Error:** An unexpected error occurred while processing your voice message."
+            error_msg = f"❌ *Voice processing error*\n\n👤 **{user_name}:**\n⚠️ **Error:** An unexpected error occurred while processing your voice message.\n\n"
+            error_msg += "🔧 **Technical details:** " + str(e)[:100] + "...\n\n"
+            error_msg += "💡 **Tip:** Try sending a text message instead."
             self.send_message(chat_id, error_msg)
     
     def _handle_text_message(self, message: Dict, chat_id: int, user_id: int, user_name: str, text: str) -> None:

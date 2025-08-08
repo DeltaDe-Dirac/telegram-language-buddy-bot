@@ -199,6 +199,69 @@ class TestVoiceTranscriber:
         transcriber._respect_rate_limit('assemblyai')
         mock_sleep.assert_not_called()
 
+    @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
+    @patch('src.models.voice_transcriber.aai')
+    def test_assemblyai_400_error_retry(self, mock_aai):
+        """Test AssemblyAI 400 error handling with retry without language hint"""
+        # Mock first call to fail with 400 error
+        mock_aai.Transcriber.return_value.transcribe.side_effect = [
+            Exception("400 Bad Request"),  # First call fails
+            Mock(text="Hello world")  # Retry succeeds
+        ]
+        
+        os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
+        transcriber = VoiceTranscriber()
+        
+        with patch('tempfile.NamedTemporaryFile') as mock_temp:
+            mock_temp.return_value.__enter__.return_value.name = '/tmp/test.ogg'
+            result = transcriber._transcribe_with_assemblyai_hinted('/tmp/test.ogg', language_hint='en')
+        
+        # Should succeed after retry
+        assert result == "Hello world"
+        # Should have been called twice (original + retry)
+        assert mock_aai.Transcriber.return_value.transcribe.call_count == 2
+
+    @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
+    @patch('src.models.voice_transcriber.aai')
+    def test_assemblyai_400_error_retry_fails(self, mock_aai):
+        """Test AssemblyAI 400 error handling when retry also fails"""
+        # Mock both calls to fail
+        mock_aai.Transcriber.return_value.transcribe.side_effect = [
+            Exception("400 Bad Request"),  # First call fails
+            Exception("400 Bad Request")   # Retry also fails
+        ]
+        
+        os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
+        transcriber = VoiceTranscriber()
+        
+        with patch('tempfile.NamedTemporaryFile') as mock_temp:
+            mock_temp.return_value.__enter__.return_value.name = '/tmp/test.ogg'
+            result = transcriber._transcribe_with_assemblyai_hinted('/tmp/test.ogg', language_hint='en')
+        
+        # Should fail after both attempts
+        assert result is None
+        # Should have been called twice (original + retry)
+        assert mock_aai.Transcriber.return_value.transcribe.call_count == 2
+
+    @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
+    @patch('src.models.voice_transcriber.aai')
+    def test_assemblyai_non_400_error_no_retry(self, mock_aai):
+        """Test that non-400 errors don't trigger retry"""
+        # Mock to fail with non-400 error
+        mock_aai.Transcriber.return_value.transcribe.side_effect = Exception("500 Internal Server Error")
+        
+        os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
+        transcriber = VoiceTranscriber()
+        
+        with patch('tempfile.NamedTemporaryFile') as mock_temp:
+            mock_temp.return_value.__enter__.return_value.name = '/tmp/test.ogg'
+            result = transcriber._transcribe_with_assemblyai_hinted('/tmp/test.ogg', language_hint='en')
+        
+        # Should fail without retry
+        assert result is None
+        # Should have been called only once
+        assert mock_aai.Transcriber.return_value.transcribe.call_count == 1
+
 
 def mock_open(read_data):
     """Helper function to mock file open"""

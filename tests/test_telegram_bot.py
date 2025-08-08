@@ -362,6 +362,105 @@ class TestTelegramBot(unittest.TestCase):
         self.assertIn("Unknown command", message_text)
         self.assertIn("/help", message_text)
 
+    @patch.object(TelegramBot, 'send_message')
+    def test_handle_voice_message_transcription_failure(self, mock_send):
+        """Test voice message handling when transcription fails"""
+        # Mock voice message
+        message = {
+            'message_id': 123,
+            'voice': {
+                'file_id': 'test_file_id',
+                'duration': 5
+            }
+        }
+        
+        # Mock transcription failure
+        self.bot.voice_transcriber.transcribe_voice_message = Mock(return_value=None)
+        
+        # Mock service status
+        self.bot.voice_transcriber.get_service_status = Mock(return_value={
+            'services_available': {'assemblyai': True, 'google_speech': False}
+        })
+        
+        # Test voice message handling
+        self.bot._handle_voice_message(message, 12345, 67890, "TestUser")
+        
+        # Verify error message was sent
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args[0]
+        self.assertEqual(call_args[0], 12345)  # chat_id
+        self.assertIn("Voice transcription failed", call_args[1])  # error message
+        self.assertIn("TestUser", call_args[1])  # user name in message
+
+    @patch.object(TelegramBot, 'send_message')
+    @patch.object(TelegramBot, 'get_user_language_pair')
+    def test_handle_voice_message_transcription_success_translation_failure(self, mock_get_pair, mock_send):
+        """Test voice message handling when transcription succeeds but translation fails"""
+        # Mock voice message
+        message = {
+            'message_id': 123,
+            'voice': {
+                'file_id': 'test_file_id',
+                'duration': 5
+            }
+        }
+        
+        # Mock successful transcription
+        self.bot.voice_transcriber.transcribe_voice_message = Mock(return_value="Hello world")
+        
+        # Mock language detection
+        self.bot.translator.detect_language = Mock(return_value='en')
+        
+        # Mock translation failure
+        self.bot.translator.translate_text = Mock(return_value=None)
+        
+        # Mock language pair
+        mock_get_pair.return_value = ('en', 'ru')
+        
+        # Test voice message handling
+        self.bot._handle_voice_message(message, 12345, 67890, "TestUser")
+        
+        # Verify transcription was shown even though translation failed
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args[0]
+        self.assertEqual(call_args[0], 12345)  # chat_id
+        self.assertIn("Voice Transcription", call_args[1])  # transcription message
+        self.assertIn("Hello world", call_args[1])  # transcription text
+        self.assertIn("Translation failed", call_args[1])  # translation failure note
+
+    @patch.object(TelegramBot, 'send_message')
+    @patch.object(TelegramBot, 'get_user_language_pair')
+    def test_handle_voice_message_language_not_in_pair(self, mock_get_pair, mock_send):
+        """Test voice message handling when detected language is not in user's language pair"""
+        # Mock voice message
+        message = {
+            'message_id': 123,
+            'voice': {
+                'file_id': 'test_file_id',
+                'duration': 5
+            }
+        }
+        
+        # Mock successful transcription
+        self.bot.voice_transcriber.transcribe_voice_message = Mock(return_value="Bonjour le monde")
+        
+        # Mock language detection (French, not in en-ru pair)
+        self.bot.translator.detect_language = Mock(return_value='fr')
+        
+        # Mock language pair
+        mock_get_pair.return_value = ('en', 'ru')
+        
+        # Test voice message handling
+        self.bot._handle_voice_message(message, 12345, 67890, "TestUser")
+        
+        # Verify transcription was shown with language note
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args[0]
+        self.assertEqual(call_args[0], 12345)  # chat_id
+        self.assertIn("Voice Transcription", call_args[1])  # transcription message
+        self.assertIn("Bonjour le monde", call_args[1])  # transcription text
+        self.assertIn("Detected language 'fr' is not in your language pair", call_args[1])  # language note
+
 
 if __name__ == '__main__':
     unittest.main()
