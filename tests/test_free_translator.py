@@ -15,7 +15,7 @@ async def mock_detect(self, text):
     if text and isinstance(text, str):
         return type('MockDetect', (), {'lang': 'en'})()
     else:
-        raise Exception("Invalid input")
+        raise ValueError("Invalid input")
 
 sys.modules['googletrans'] = type('MockModule', (), {
     'Translator': type('MockTranslator', (), {

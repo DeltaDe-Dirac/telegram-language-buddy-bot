@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import requests
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,7 @@ class FreeTranslator:
                 
             return translated_text
             
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Google Translate failed: {e}")
             return None
     
@@ -96,6 +97,6 @@ class FreeTranslator:
                 logger.info(f"ℹ️  No mapping needed for: {detected_code}")
             
             return mapped_code
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Language detection failed: {e}")
             return 'unknown' 

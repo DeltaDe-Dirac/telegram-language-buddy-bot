@@ -1,8 +1,7 @@
 import os
 import logging
 from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Text, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -94,7 +93,7 @@ class DatabaseManager:
             else:
                 # For SQLite, just create tables normally
                 Base.metadata.create_all(bind=self.engine)
-        except Exception as e:
+        except (OSError, ImportError, AttributeError) as e:
             logger.error(f"Error ensuring proper schema: {e}")
             # Fallback to normal table creation
             Base.metadata.create_all(bind=self.engine)
@@ -138,7 +137,7 @@ class DatabaseManager:
                 Base.metadata.create_all(bind=self.engine)
                 logger.info("Recreated tables with proper BIGINT chat_id columns")
                 
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError) as e:
             logger.error(f"Error fixing PostgreSQL schema: {e}")
             # Fallback to normal table creation
             Base.metadata.create_all(bind=self.engine)
@@ -162,7 +161,7 @@ class DatabaseManager:
                 if prefs:
                     return (prefs.language1, prefs.language2)
                 return None
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 logger.error(f"Error getting preferences for chat {chat_id}: {e}")
                 return None
     
@@ -191,7 +190,7 @@ class DatabaseManager:
                 logger.info(f"Saved preferences for chat {chat_id}: {lang1} ↔ {lang2}")
                 return True
                 
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 session.rollback()
                 logger.error(f"Error saving preferences for chat {chat_id}: {e}")
                 return False
@@ -208,7 +207,7 @@ class DatabaseManager:
                         'last_activity': stats.last_activity
                     }
                 return None
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 logger.error(f"Error getting stats for user {user_id}: {e}")
                 return None
     
@@ -233,7 +232,7 @@ class DatabaseManager:
                 session.commit()
                 return True
                 
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 session.rollback()
                 logger.error(f"Error updating stats for user {user_id}: {e}")
                 return False
@@ -244,7 +243,7 @@ class DatabaseManager:
             try:
                 prefs = session.query(UserPreferences).all()
                 return {p.chat_id: (p.language1, p.language2) for p in prefs}
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 logger.error(f"Error getting all preferences: {e}")
                 return {}
     
@@ -259,7 +258,7 @@ class DatabaseManager:
                         'first_lang': state.first_lang
                     }
                 return None
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 logger.error(f"Error getting selection state for chat {chat_id}: {e}")
                 return None
     
@@ -288,7 +287,7 @@ class DatabaseManager:
                 logger.info(f"Saved selection state for chat {chat_id}: step={step}, first_lang={first_lang}")
                 return True
                 
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 session.rollback()
                 logger.error(f"Error saving selection state for chat {chat_id}: {e}")
                 return False
@@ -303,7 +302,7 @@ class DatabaseManager:
                     session.commit()
                     logger.info(f"Cleared selection state for chat {chat_id}")
                 return True
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 session.rollback()
                 logger.error(f"Error clearing selection state for chat {chat_id}: {e}")
                 return False
@@ -343,7 +342,7 @@ class DatabaseManager:
                 logger.info(f"Stored translation for message {message_id} in chat {chat_id}")
                 return True
                 
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 session.rollback()
                 logger.error(f"Error storing translation for message {message_id} in chat {chat_id}: {e}")
                 return False
@@ -368,6 +367,6 @@ class DatabaseManager:
                     }
                 return None
                 
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 logger.error(f"Error getting translation for message {message_id} in chat {chat_id}: {e}")
                 return None

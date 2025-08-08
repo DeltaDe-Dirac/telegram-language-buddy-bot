@@ -94,7 +94,7 @@ class TestVoiceTranscriber:
     @patch('src.models.voice_transcriber.aai')
     def test_transcribe_with_assemblyai_failure(self, mock_aai):
         """Test AssemblyAI transcription failure"""
-        mock_aai.Transcriber.return_value.transcribe.side_effect = Exception("API Error")
+        mock_aai.Transcriber.return_value.transcribe.side_effect = ValueError("API Error")
         
         os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
         transcriber = VoiceTranscriber()
@@ -128,7 +128,7 @@ class TestVoiceTranscriber:
     @patch('src.models.voice_transcriber.speech')
     def test_transcribe_with_google_speech_failure(self, mock_speech):
         """Test Google Speech-to-Text transcription failure"""
-        mock_speech.SpeechClient.return_value.recognize.side_effect = Exception("API Error")
+        mock_speech.SpeechClient.return_value.recognize.side_effect = ValueError("API Error")
         
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'test_credentials.json'
         transcriber = VoiceTranscriber()

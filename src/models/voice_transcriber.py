@@ -97,7 +97,7 @@ class VoiceTranscriber:
             
             return file_response.content
             
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Error downloading voice file: {e}")
             return None
     
@@ -108,7 +108,7 @@ class VoiceTranscriber:
                 temp_file.write(audio_data)
                 temp_file_path = temp_file.name
             return temp_file_path
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError) as e:
             logger.error(f"Error saving audio to temp file: {e}")
             return None
     
@@ -132,7 +132,7 @@ class VoiceTranscriber:
                 logger.warning("[WARN] AssemblyAI language detection failed")
                 return None
                 
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"[ERROR] AssemblyAI language detection failed: {e}")
             return None
     
@@ -156,7 +156,7 @@ class VoiceTranscriber:
                 logger.warning("[WARN] AssemblyAI returned empty transcription")
                 return None
                 
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"[ERROR] AssemblyAI transcription failed: {e}")
             return None
     
@@ -195,7 +195,7 @@ class VoiceTranscriber:
         except (GoogleAPICallError, ResourceExhausted) as e:
             logger.error(f"[ERROR] Google Speech API failed: {e}")
             return None
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError) as e:
             logger.error(f"[ERROR] Google Speech unexpected error: {e}")
             return None
     
@@ -240,7 +240,7 @@ class VoiceTranscriber:
                     transcript = self._transcribe_with_google_speech(temp_audio_path, detected_language)
                     if transcript:
                         return transcript
-                except Exception as e:
+                except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
                     logger.warning(f"[WARN] Google Speech-to-Text failed: {e}")
             
             logger.error("[FATAL] All transcription services failed")
@@ -250,7 +250,7 @@ class VoiceTranscriber:
             # Clean up temporary file
             try:
                 os.unlink(temp_audio_path)
-            except Exception as e:
+            except (OSError, ImportError, AttributeError, ValueError) as e:
                 logger.warning(f"Failed to clean up temp file: {e}")
     
     def get_service_status(self) -> Dict[str, Dict]:

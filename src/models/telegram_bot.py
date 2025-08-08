@@ -351,7 +351,7 @@ class TelegramBot:
                 logger.info(f"Voice translation failed, sending error response for chat {chat_id}")
                 self.send_message(chat_id, error_response)
                 
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Error processing voice message: {e}")
             error_msg = f"❌ *Voice processing error*\n\n👤 **{user_name}:**\n⚠️ **Error:** An unexpected error occurred while processing your voice message."
             self.send_message(chat_id, error_msg)
@@ -576,7 +576,7 @@ class TelegramBot:
                 self.send_message(chat_id, invalid_state_message)
                 self.db.clear_language_selection_state(chat_id)
                 
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Error in language selection for chat {chat_id}: {e}")
             self.send_message(chat_id, error_message)
             # Clean up the state to prevent further issues
@@ -616,7 +616,7 @@ class TelegramBot:
             logger.info(f"First language selected for chat {chat_id}: {selected_lang_code}")
             self.send_keyboard(chat_id, text, keyboard)
             
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Error in first language selection for chat {chat_id}: {e}")
             self.send_message(chat_id, error_message)
             self.db.clear_language_selection_state(chat_id)
@@ -649,7 +649,7 @@ class TelegramBot:
             self.db.clear_language_selection_state(chat_id)
             logger.info(f"Language selection completed for chat {chat_id}")
             
-        except Exception as e:
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Error in second language selection for chat {chat_id}: {e}")
             self.send_message(chat_id, error_message)
             self.db.clear_language_selection_state(chat_id)

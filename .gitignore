@@ -211,7 +211,11 @@ bot_data.db
 
 # Google Cloud credentials (keep secure!)
 *.json
+*service-account*.json
+*credentials*.json
+*key*.json
 !package.json
 !package-lock.json
 !tsconfig.json
 !jsconfig.json
+!app.json
