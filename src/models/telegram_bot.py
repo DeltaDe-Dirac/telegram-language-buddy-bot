@@ -276,11 +276,7 @@ class TelegramBot:
             
             logger.info(f"Processing voice message from {user_name} (duration: {duration}s)")
             
-            # Send initial processing message
-            processing_msg = f"🎤 *Processing voice message...*\n\n👤 **{user_name}:**\n⏱️ Duration: {duration}s"
-            self.send_message(chat_id, processing_msg)
-            
-            # Transcribe the voice message
+            # Transcribe the voice message first (no initial message)
             transcription = self.voice_transcriber.transcribe_voice_message(file_id)
             
             if not transcription:
@@ -301,18 +297,27 @@ class TelegramBot:
                 self.send_message(chat_id, response)
                 return
             
-            # Detect language and translate
+            # Detect language first
             detected_lang = self.translator.detect_language(transcription)
             logger.info(f"Detected language for voice transcription: {detected_lang}")
             
-            # Determine target language
+            # Determine target language based on detected language and language pair
             if detected_lang == lang1:
                 target_lang = lang2
+                logger.info(f"Translating voice {lang1} -> {lang2}")
             elif detected_lang == lang2:
                 target_lang = lang1
+                logger.info(f"Translating voice {lang2} -> {lang1}")
             else:
                 # Ignore translation if detected language is neither of the pair (consistent with text translation)
                 logger.info(f"Detected language '{detected_lang}' not in pair ({lang1}, {lang2}), ignoring voice translation")
+                return
+            
+            # Don't translate if already in target language
+            if detected_lang == target_lang:
+                response = f"✅ *Already in {LanguageDetector.SUPPORTED_LANGUAGES.get(target_lang, target_lang)}*\n\n👤 **{user_name}:**\n_{transcription}_"
+                logger.info(f"Voice already in target language, sending formatted response for chat {chat_id}")
+                self.send_message(chat_id, response)
                 return
             
             # Translate the transcription
@@ -329,17 +334,22 @@ class TelegramBot:
                         detected_lang, target_lang
                     )
                 
+                # Use same format as text messages
                 response = f"🎤 *Voice Translation* ({detected_lang} → {target_lang})\n\n"
                 response += f"👤 **{user_name}:**\n"
-                response += f"📝 **Transcription:**\n_{transcription}_\n\n"
+                response += f"_{transcription}_\n\n"
                 response += "🔄 **Translation:**\n"
                 response += f"_{translated}_"
                 
+                logger.info(f"Voice translation successful, sending formatted response for chat {chat_id}")
                 self.send_message(chat_id, response)
             else:
-                # Translation failed, show transcription only
-                response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_\n\n⚠️ *Translation failed*"
-                self.send_message(chat_id, response)
+                error_response = "❌ *Voice translation failed*\n\n"
+                error_response += f"👤 **{user_name}:**\n"
+                error_response += f"_{transcription}_\n\n"
+                error_response += "⚠️ **Error:** Unable to translate this voice message. Please try again."
+                logger.info(f"Voice translation failed, sending error response for chat {chat_id}")
+                self.send_message(chat_id, error_response)
                 
         except Exception as e:
             logger.error(f"Error processing voice message: {e}")
