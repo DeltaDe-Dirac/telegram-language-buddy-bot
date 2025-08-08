@@ -5,6 +5,20 @@ import time
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
 
+# Import transcription services
+try:
+    import assemblyai as aai
+    ASSEMBLYAI_AVAILABLE = True
+except ImportError:
+    ASSEMBLYAI_AVAILABLE = False
+
+try:
+    from google.cloud import speech
+    from google.api_core.exceptions import GoogleAPICallError, ResourceExhausted
+    GOOGLE_SPEECH_AVAILABLE = True
+except ImportError:
+    GOOGLE_SPEECH_AVAILABLE = False
+
 from .language_detector import LanguageDetector
 from .free_translator import FreeTranslator
 from .database import DatabaseManager
@@ -268,7 +282,7 @@ class TelegramBot:
         self._handle_text_message(message, chat_id, user_id, user_name, text)
     
     def _handle_voice_message(self, message: Dict, chat_id: int, user_id: int, user_name: str) -> None:
-        """Handle voice message transcription and translation"""
+        """Handle voice message transcription and translation with intelligent fallback strategy"""
         try:
             voice = message['voice']
             file_id = voice['file_id']
@@ -276,51 +290,46 @@ class TelegramBot:
             
             logger.info(f"Processing voice message from {user_name} (duration: {duration}s)")
             
-            # Transcribe the voice message first (no initial message)
-            transcription = self.voice_transcriber.transcribe_voice_message(file_id)
+            # Step 1: Get language pair for user
+            lang1, lang2 = self.get_user_language_pair(chat_id)
+            has_language_pair = bool(lang1 and lang2)
             
-            if not transcription:
-                error_msg = f"❌ *Voice transcription failed*\n\n👤 **{user_name}:**\n⚠️ **Error:** Unable to transcribe this voice message.\n\n"
-                error_msg += "🔧 **Possible reasons:**\n"
-                error_msg += "• Audio quality is too low\n"
-                error_msg += "• No speech detected\n"
-                error_msg += "• All transcription services are temporarily unavailable\n\n"
-                error_msg += "💡 **Tip:** Try sending a text message instead."
-                self.send_message(chat_id, error_msg)
+            # Step 2: Transcribe with intelligent fallback strategy
+            transcription_result = self._transcribe_with_fallback(file_id)
+            
+            if not transcription_result:
+                self._send_transcription_error(chat_id, user_name)
                 return
             
-            # Check if user has language pair set
-            lang1, lang2 = self.get_user_language_pair(chat_id)
-            if not lang1 or not lang2:
-                # No language pair set, just show transcription
+            transcription, detected_lang = transcription_result
+            
+            # Step 3: Handle case where no language pair is set
+            if not has_language_pair:
                 response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
+                if detected_lang:
+                    response += f"\n\n🌍 **Detected Language:** {LanguageDetector.SUPPORTED_LANGUAGES.get(detected_lang, detected_lang)}"
                 self.send_message(chat_id, response)
                 return
             
-            # Detect language first
-            detected_lang = self.translator.detect_language(transcription, allowed_langs=(lang1, lang2))
-            logger.info(f"Detected language for voice transcription: {detected_lang}")
-            
-            # Determine target language based on detected language and language pair
-            if detected_lang == lang1:
-                target_lang = lang2
-                logger.info(f"Translating voice {lang1} -> {lang2}")
-            elif detected_lang == lang2:
-                target_lang = lang1
-                logger.info(f"Translating voice {lang2} -> {lang1}")
-            else:
-                # Ignore translation if detected language is neither of the pair (consistent with text translation)
-                logger.info(f"Detected language '{detected_lang}' not in pair ({lang1}, {lang2}), ignoring voice translation")
+            # Step 4: Determine target language based on detected language and language pair
+            target_lang = self._determine_target_language(detected_lang, lang1, lang2)
+            if not target_lang:
+                # Detected language is not in the pair, show transcription only
+                response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
+                if detected_lang:
+                    response += f"\n\n🌍 **Detected Language:** {LanguageDetector.SUPPORTED_LANGUAGES.get(detected_lang, detected_lang)}"
+                response += f"\n\n💡 **Tip:** Use /setpair to configure languages for automatic translation."
+                self.send_message(chat_id, response)
                 return
             
-            # Don't translate if already in target language
+            # Step 5: Don't translate if already in target language
             if detected_lang == target_lang:
                 response = f"✅ *Already in {LanguageDetector.SUPPORTED_LANGUAGES.get(target_lang, target_lang)}*\n\n👤 **{user_name}:**\n_{transcription}_"
                 logger.info(f"Voice already in target language, sending formatted response for chat {chat_id}")
                 self.send_message(chat_id, response)
                 return
             
-            # Translate the transcription
+            # Step 6: Translate the transcription
             translated = self.translator.translate_text(transcription, target_lang, detected_lang)
             
             if translated and translated != transcription:
@@ -344,17 +353,198 @@ class TelegramBot:
                 logger.info(f"Voice translation successful, sending formatted response for chat {chat_id}")
                 self.send_message(chat_id, response)
             else:
-                error_response = "❌ *Voice translation failed*\n\n"
-                error_response += f"👤 **{user_name}:**\n"
-                error_response += f"_{transcription}_\n\n"
-                error_response += "⚠️ **Error:** Unable to translate this voice message. Please try again."
-                logger.info(f"Voice translation failed, sending error response for chat {chat_id}")
-                self.send_message(chat_id, error_response)
+                self._send_translation_error(chat_id, user_name, transcription)
                 
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Error processing voice message: {e}")
             error_msg = f"❌ *Voice processing error*\n\n👤 **{user_name}:**\n⚠️ **Error:** An unexpected error occurred while processing your voice message."
             self.send_message(chat_id, error_msg)
+    
+    def _transcribe_with_fallback(self, file_id: str) -> Optional[Tuple[str, Optional[str]]]:
+        """Transcribe voice message with intelligent fallback strategy following the Python example pattern"""
+        try:
+            # Download the voice file
+            audio_data = self.voice_transcriber._download_voice_file(file_id)
+            if not audio_data:
+                logger.error("Failed to download voice file")
+                return None
+            
+            logger.info(f"Downloaded voice file, size: {len(audio_data)} bytes")
+            
+            # Save to temporary file for services that need file paths
+            temp_audio_path = self.voice_transcriber._save_audio_to_temp_file(audio_data)
+            if not temp_audio_path:
+                logger.error("Failed to save audio to temp file")
+                return None
+            
+            try:
+                transcript = None
+                detected_lang = None
+                
+                # Step 1: Try to detect language with AssemblyAI first
+                if self.voice_transcriber.services_available.get('assemblyai', False):
+                    logger.info("[INFO] Trying AssemblyAI language detection...")
+                    try:
+                        detected_lang = self._detect_language_assemblyai(temp_audio_path)
+                        if detected_lang:
+                            logger.info(f"[INFO] Detected language: {detected_lang}")
+                    except Exception as e:
+                        logger.warning(f"[WARN] AssemblyAI language detection failed: {e}")
+                
+                # Step 2: Try Google Speech-to-Text with detected language
+                if self.voice_transcriber.services_available.get('google_speech', False):
+                    logger.info(f"[INFO] Trying Google Speech-to-Text with language {detected_lang or 'auto-detect'}...")
+                    try:
+                        transcript = self._transcribe_with_google_speech(temp_audio_path, detected_lang)
+                        if transcript:
+                            logger.info("[SUCCESS] Google transcription successful")
+                            return transcript, detected_lang
+                    except (GoogleAPICallError, ResourceExhausted) as e:
+                        logger.warning(f"[WARN] Google API failed: {e}")
+                        logger.info("[INFO] Falling back to AssemblyAI...")
+                    except Exception as e:
+                        logger.warning(f"[WARN] Google Speech unexpected error: {e}")
+                        logger.info("[INFO] Falling back to AssemblyAI...")
+                
+                # Step 3: Fallback to AssemblyAI for full transcription
+                if self.voice_transcriber.services_available.get('assemblyai', False):
+                    logger.info("[INFO] Trying AssemblyAI transcription as fallback...")
+                    try:
+                        transcript = self.voice_transcriber._transcribe_with_assemblyai(temp_audio_path)
+                        if transcript:
+                            logger.info("[SUCCESS] AssemblyAI transcription successful")
+                            # If we didn't detect language earlier, try to detect it from the transcript
+                            if not detected_lang:
+                                detected_lang = self.translator.detect_language(transcript)
+                            return transcript, detected_lang
+                    except Exception as e:
+                        logger.error(f"[ERROR] AssemblyAI failed: {e}")
+                
+                logger.error("[FATAL] All transcription services failed")
+                return None
+                
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_audio_path)
+                except (OSError, ImportError, AttributeError, ValueError) as e:
+                    logger.warning(f"Failed to clean up temp file: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error in transcription fallback: {e}")
+            return None
+    
+    def _detect_language_assemblyai(self, audio_path: str) -> Optional[str]:
+        """Quickly detect spoken language using AssemblyAI"""
+        try:
+            self.voice_transcriber._respect_rate_limit('assemblyai')
+            
+            aai.settings.api_key = self.voice_transcriber.assemblyai_api_key
+            transcriber = aai.Transcriber()
+            
+            transcript = transcriber.transcribe(
+                audio_path,
+                config=aai.TranscriptionConfig(language_detection=True)
+            )
+            
+            if transcript.language_code:
+                logger.info(f"[INFO] AssemblyAI detected language: {transcript.language_code}")
+                return transcript.language_code
+            else:
+                logger.warning("[WARN] AssemblyAI language detection returned no language code")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[ERROR] AssemblyAI language detection failed: {e}")
+            return None
+    
+    def _transcribe_with_google_speech(self, audio_path: str, language_code: Optional[str] = None) -> Optional[str]:
+        """Full transcription using Google Speech-to-Text with optional language specification"""
+        try:
+            self.voice_transcriber._respect_rate_limit('google_speech')
+            
+            client = speech.SpeechClient()
+            
+            with open(audio_path, "rb") as f:
+                content = f.read()
+            
+            audio = speech.RecognitionAudio(content=content)
+            
+            # Configure based on whether we have a detected language
+            if language_code:
+                config = speech.RecognitionConfig(
+                    encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+                    sample_rate_hertz=48000,  # Telegram voice messages are typically 48kHz
+                    language_code=language_code,
+                    enable_automatic_punctuation=True
+                )
+            else:
+                # Use auto language detection
+                config = speech.RecognitionConfig(
+                    encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+                    sample_rate_hertz=48000,
+                    language_code="en-US",  # Default, will auto-detect
+                    enable_automatic_punctuation=True
+                )
+            
+            response = client.recognize(config=config, audio=audio)
+            
+            if response.results:
+                transcript = " ".join([result.alternatives[0].transcript for result in response.results])
+                logger.info(f"[SUCCESS] Google Speech transcription: '{transcript[:50]}...'")
+                return transcript.strip()
+            else:
+                logger.warning("[WARN] Google Speech returned empty transcription")
+                return None
+                
+        except Exception as e:
+            logger.error(f"[ERROR] Google Speech transcription failed: {e}")
+            return None
+    
+    def _determine_target_language(self, detected_lang: Optional[str], lang1: str, lang2: str) -> Optional[str]:
+        """Determine target language based on detected language and user's language pair"""
+        if not detected_lang:
+            logger.info("No language detected, cannot determine target language")
+            return None
+        
+        # Detect language using translator if not already detected
+        if detected_lang == 'unknown':
+            detected_lang = self.translator.detect_language(detected_lang, allowed_langs=(lang1, lang2))
+        
+        logger.info(f"Determining target language for detected '{detected_lang}' with pair ({lang1}, {lang2})")
+        
+        # Determine target language based on detected language and language pair
+        if detected_lang == lang1:
+            target_lang = lang2
+            logger.info(f"Translating voice {lang1} -> {lang2}")
+            return target_lang
+        elif detected_lang == lang2:
+            target_lang = lang1
+            logger.info(f"Translating voice {lang2} -> {lang1}")
+            return target_lang
+        else:
+            # Detected language is neither of the pair
+            logger.info(f"Detected language '{detected_lang}' not in pair ({lang1}, {lang2}), ignoring voice translation")
+            return None
+    
+    def _send_transcription_error(self, chat_id: int, user_name: str) -> None:
+        """Send transcription error message"""
+        error_msg = f"❌ *Voice transcription failed*\n\n👤 **{user_name}:**\n⚠️ **Error:** Unable to transcribe this voice message.\n\n"
+        error_msg += "🔧 **Possible reasons:**\n"
+        error_msg += "• Audio quality is too low\n"
+        error_msg += "• No speech detected\n"
+        error_msg += "• All transcription services are temporarily unavailable\n\n"
+        error_msg += "💡 **Tip:** Try sending a text message instead."
+        self.send_message(chat_id, error_msg)
+    
+    def _send_translation_error(self, chat_id: int, user_name: str, transcription: str) -> None:
+        """Send translation error message"""
+        error_response = "❌ *Voice translation failed*\n\n"
+        error_response += f"👤 **{user_name}:**\n"
+        error_response += f"_{transcription}_\n\n"
+        error_response += "⚠️ **Error:** Unable to translate this voice message. Please try again."
+        logger.info(f"Voice translation failed, sending error response for chat {chat_id}")
+        self.send_message(chat_id, error_response)
     
     def _handle_text_message(self, message: Dict, chat_id: int, user_id: int, user_name: str, text: str) -> None:
         """Handle regular text message translation"""
