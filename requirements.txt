@@ -7,3 +7,8 @@ SQLAlchemy==2.0.23
 psycopg2-binary==2.9.9
 pytest==8.4.1
 pytest-cov==6.2.1
+# Voice transcription dependencies
+# Note: API keys needed for voice transcription services:
+# - WHISPER_API_KEY (for OpenAI Whisper API)
+# - HUGGINGFACE_TOKEN (for Hugging Face inference API)
+# - OPENAI_API_KEY (for OpenAI API)

@@ -2,7 +2,7 @@ import os
 import logging
 from flask import Flask
 
-from .controllers import home, webhook, set_webhook, manual_translate, get_stats
+from .controllers import home, webhook, set_webhook, manual_translate, get_stats, get_voice_status
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,6 +17,7 @@ app.route('/webhook', methods=['POST'])(webhook)
 app.route('/set_webhook', methods=['POST'])(set_webhook)
 app.route('/translate', methods=['POST'])(manual_translate)
 app.route('/stats')(get_stats)
+app.route('/voice-status')(get_voice_status)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

@@ -6,6 +6,7 @@ A smart translation bot that provides instant language conversion using Google T
 
 - **Multi-language Support**: 40+ languages including Hebrew, Russian, Chinese, Arabic, and more
 - **Smart Language Detection**: Automatically detects input language
+- **Voice Message Transcription**: Transcribe and translate voice messages with multiple free model fallbacks
 - **Persistent Preferences**: User language pairs are saved in database
 - **Interactive Setup**: Easy `/setpair` command for language configuration
 - **Statistics Tracking**: Monitor translation usage and user activity
@@ -121,6 +122,11 @@ export PORT=5000
 - `DATABASE_URL` - Database connection string (auto-configured)
 - `PORT` - Server port (auto-configured by Heroku)
 
+**Optional Voice Transcription API Keys:**
+- `WHISPER_API_KEY` - OpenAI Whisper API key for voice transcription
+- `HUGGINGFACE_TOKEN` - Hugging Face inference API token for voice transcription
+- `OPENAI_API_KEY` - OpenAI API key for alternative voice transcription
+
 ## 🔧 Database
 
 The bot uses SQLAlchemy with automatic database selection:
@@ -158,6 +164,63 @@ heroku logs --tail
 - `/help` - Show available commands
 - `/languages` - List all supported languages
 
+## 🎤 Voice Message Support
+
+The bot now supports voice message transcription and translation! Simply send a voice message and the bot will:
+
+1. **Transcribe** the voice message using free AI models
+2. **Detect** the language automatically
+3. **Translate** to your target language (if configured)
+4. **Display** both transcription and translation
+
+### Voice Transcription Features
+
+- **Multiple Free Models**: Uses fallback system with multiple free transcription services
+- **Automatic Language Detection**: Detects spoken language automatically
+- **Rate Limiting**: Respects API rate limits to avoid service disruptions
+- **Error Handling**: Graceful fallback when services are unavailable
+- **Quality Feedback**: Provides helpful error messages when transcription fails
+
+### Supported Voice Transcription Services
+
+1. **OpenAI Whisper API** (Primary) - High accuracy, free tier available
+2. **Hugging Face Inference API** (Fallback) - Free community models
+3. **OpenAI API** (Alternative) - Backup Whisper endpoint
+
+### Setting Up Voice Transcription
+
+To enable voice transcription, add one or more API keys to your environment:
+
+```env
+# Primary service (recommended)
+WHISPER_API_KEY=your_openai_whisper_api_key
+
+# Fallback service
+HUGGINGFACE_TOKEN=your_huggingface_token
+
+# Alternative service
+OPENAI_API_KEY=your_openai_api_key
+```
+
+**Note**: Voice transcription works even without API keys, but will show an error message when users send voice messages.
+
+### Voice Message Workflow
+
+1. **User sends voice message** → Bot shows "Processing..." message
+2. **Bot downloads audio** → Downloads from Telegram servers
+3. **Bot transcribes audio** → Uses available transcription services
+4. **Bot detects language** → Automatically detects spoken language
+5. **Bot translates** → Translates to user's target language (if configured)
+6. **Bot responds** → Shows transcription and translation
+
+### Error Handling
+
+If all transcription services fail, the bot will:
+- Show a helpful error message
+- Explain possible reasons for failure
+- Suggest trying a text message instead
+- Continue working normally for text messages
+
 ## 🌐 Supported Languages
 
 The bot supports 40+ languages including:
@@ -179,8 +242,11 @@ telegram-language-buddy-bot/
 │   │   ├── database.py          # Database models and manager
 │   │   ├── free_translator.py   # Google Translate integration
 │   │   ├── language_detector.py # Language detection utilities
+│   │   ├── voice_transcriber.py # Voice message transcription
 │   │   └── telegram_bot.py      # Main bot logic
 │   └── main.py                  # Flask application entry point
+├── tests/
+│   └── test_voice_transcriber.py # Voice transcription tests
 ├── requirements.txt             # Python dependencies
 ├── Procfile                     # Heroku deployment configuration
 └── README.md                    # This file
@@ -195,6 +261,7 @@ The bot provides several REST API endpoints:
 - `POST /set_webhook` - Set Telegram webhook URL
 - `POST /translate` - Manual translation endpoint
 - `GET /stats` - Get bot statistics
+- `GET /voice-status` - Get voice transcription service status
 
 ## 🚀 Deployment
 

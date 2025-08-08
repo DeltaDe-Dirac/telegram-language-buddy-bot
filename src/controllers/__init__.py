@@ -3,7 +3,8 @@ from .bot_controller import (
     webhook,
     set_webhook,
     manual_translate,
-    get_stats
+    get_stats,
+    get_voice_status
 )
 
-__all__ = ['home', 'webhook', 'set_webhook', 'manual_translate', 'get_stats'] 
+__all__ = ['home', 'webhook', 'set_webhook', 'manual_translate', 'get_stats', 'get_voice_status'] 

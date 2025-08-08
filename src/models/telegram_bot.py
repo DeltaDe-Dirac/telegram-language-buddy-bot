@@ -8,6 +8,7 @@ from datetime import datetime
 from .language_detector import LanguageDetector
 from .free_translator import FreeTranslator
 from .database import DatabaseManager
+from .voice_transcriber import VoiceTranscriber
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +32,14 @@ class TelegramBot:
         self.base_url = f"https://api.telegram.org/bot{self.token}"
         self.translator = FreeTranslator()
         self.db = DatabaseManager()
+        self.voice_transcriber = VoiceTranscriber()
         
         # State management for two-step language selection is now handled by database
         
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
         
-        logger.info("TelegramBot initialized with database")
+        logger.info("TelegramBot initialized with database and voice transcription")
     
     def answer_callback_query(self, callback_query_id: str, text: str = None) -> bool:
         """Answer callback query to remove loading state"""
@@ -242,11 +244,18 @@ class TelegramBot:
             logger.error(f"Error processing update: {e}")
     
     def _handle_message(self, message: Dict) -> None:
-        """Handle regular text message"""
+        """Handle text and voice messages"""
         chat_id = message['chat']['id']
         user_id = message['from']['id']
-        text = message.get('text', '').strip()
+        user_name = message['from'].get('first_name', 'User')
         
+        # Handle voice messages first
+        if 'voice' in message:
+            self._handle_voice_message(message, chat_id, user_id, user_name)
+            return
+        
+        # Handle text messages
+        text = message.get('text', '').strip()
         if not text:
             return
         
@@ -255,7 +264,92 @@ class TelegramBot:
             self._handle_command(chat_id, user_id, text)
             return
         
-        # Regular message - translate it
+        # Regular text message - translate it
+        self._handle_text_message(message, chat_id, user_id, user_name, text)
+    
+    def _handle_voice_message(self, message: Dict, chat_id: int, user_id: int, user_name: str) -> None:
+        """Handle voice message transcription and translation"""
+        try:
+            voice = message['voice']
+            file_id = voice['file_id']
+            duration = voice.get('duration', 0)
+            
+            logger.info(f"Processing voice message from {user_name} (duration: {duration}s)")
+            
+            # Send initial processing message
+            processing_msg = f"🎤 *Processing voice message...*\n\n👤 **{user_name}:**\n⏱️ Duration: {duration}s"
+            self.send_message(chat_id, processing_msg)
+            
+            # Transcribe the voice message
+            transcription = self.voice_transcriber.transcribe_voice_message(file_id)
+            
+            if not transcription:
+                error_msg = f"❌ *Voice transcription failed*\n\n👤 **{user_name}:**\n⚠️ **Error:** Unable to transcribe this voice message.\n\n"
+                error_msg += "🔧 **Possible reasons:**\n"
+                error_msg += "• Audio quality is too low\n"
+                error_msg += "• No speech detected\n"
+                error_msg += "• All transcription services are temporarily unavailable\n\n"
+                error_msg += "💡 **Tip:** Try sending a text message instead."
+                self.send_message(chat_id, error_msg)
+                return
+            
+            # Check if user has language pair set
+            lang1, lang2 = self.get_user_language_pair(chat_id)
+            if not lang1 or not lang2:
+                # No language pair set, just show transcription
+                response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
+                self.send_message(chat_id, response)
+                return
+            
+            # Detect language and translate
+            detected_lang = self.translator.detect_language(transcription)
+            logger.info(f"Detected language for voice transcription: {detected_lang}")
+            
+            # Determine target language
+            if detected_lang == lang1:
+                target_lang = lang2
+            elif detected_lang == lang2:
+                target_lang = lang1
+            else:
+                # Language not in pair, just show transcription
+                response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_\n\n⚠️ *Language '{detected_lang}' not in your language pair ({lang1}, {lang2})*"
+                self.send_message(chat_id, response)
+                return
+            
+            # Translate the transcription
+            translated = self.translator.translate_text(transcription, target_lang, detected_lang)
+            
+            if translated and translated != transcription:
+                self.update_user_stats(user_id)
+                
+                # Store the translation
+                message_id = message.get('message_id')
+                if message_id:
+                    self.db.store_message_translation(
+                        chat_id, message_id, user_id, transcription, translated,
+                        detected_lang, target_lang
+                    )
+                
+                response = f"🎤 *Voice Translation* ({detected_lang} → {target_lang})\n\n"
+                response += f"👤 **{user_name}:**\n"
+                response += f"📝 **Transcription:**\n_{transcription}_\n\n"
+                response += "🔄 **Translation:**\n"
+                response += f"_{translated}_"
+                
+                self.send_message(chat_id, response)
+            else:
+                # Translation failed, show transcription only
+                response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_\n\n⚠️ *Translation failed*"
+                self.send_message(chat_id, response)
+                
+        except Exception as e:
+            logger.error(f"Error processing voice message: {e}")
+            error_msg = f"❌ *Voice processing error*\n\n👤 **{user_name}:**\n⚠️ **Error:** An unexpected error occurred while processing your voice message."
+            self.send_message(chat_id, error_msg)
+    
+    def _handle_text_message(self, message: Dict, chat_id: int, user_id: int, user_name: str, text: str) -> None:
+        """Handle regular text message translation"""
+        # Get user language pair
         lang1, lang2 = self.get_user_language_pair(chat_id)
         logger.info(f"Chat {chat_id} has language pair {lang1}-{lang2}")
         detected_lang = self.translator.detect_language(text)
@@ -275,7 +369,6 @@ class TelegramBot:
         
         # Don't translate if already in target language
         if detected_lang == target_lang:
-            user_name = message['from'].get('first_name', 'User')
             response = f"✅ *Already in {LanguageDetector.SUPPORTED_LANGUAGES.get(target_lang, target_lang)}*\n\n👤 **{user_name}:**\n_{text}_"
             logger.info(f"Already in target language, sending formatted response for chat {chat_id}")
             self.send_message(chat_id, response)
@@ -295,7 +388,6 @@ class TelegramBot:
                     detected_lang, target_lang
                 )
             
-            user_name = message['from'].get('first_name', 'User')
             response = f"🔤 *Translation* ({detected_lang} → {target_lang})\n\n"
             response += f"👤 **{user_name}:**\n"
             response += f"_{text}_\n\n"
@@ -305,7 +397,6 @@ class TelegramBot:
             logger.info(f"Translation successful, sending formatted response for chat {chat_id}")
             self.send_message(chat_id, response)
         else:
-            user_name = message['from'].get('first_name', 'User')
             error_response = "❌ *Translation failed*\n\n"
             error_response += f"👤 **{user_name}:**\n"
             error_response += f"_{text}_\n\n"

@@ -143,4 +143,20 @@ def get_stats():
         })
         
     except (AttributeError, KeyError, TypeError) as e:
+        return jsonify({"error": str(e)}), 500
+
+def get_voice_status():
+    """Get voice transcription service status"""
+    try:
+        bot = get_bot()
+        status = bot.voice_transcriber.get_service_status()
+        
+        # Add additional info
+        status['feature_enabled'] = True
+        status['total_services'] = len(status['services_available'])
+        status['available_services'] = sum(status['services_available'].values())
+        
+        return jsonify(status)
+        
+    except (AttributeError, KeyError, TypeError) as e:
         return jsonify({"error": str(e)}), 500 
