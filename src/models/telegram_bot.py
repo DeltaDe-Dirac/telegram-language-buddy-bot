@@ -382,9 +382,23 @@ class TelegramBot:
                 transcript = None
                 detected_lang = None
                 
-                # Step 1: Try Google Speech-to-Text first with auto-detection
+                # Step 1: Try AssemblyAI first (better for Hebrew and other languages)
+                if self.voice_transcriber.services_available.get('assemblyai', False):
+                    logger.info("[INFO] Trying AssemblyAI transcription first...")
+                    try:
+                        transcript = self.voice_transcriber._transcribe_with_assemblyai(temp_audio_path)
+                        if transcript:
+                            logger.info("[SUCCESS] AssemblyAI transcription successful")
+                            # Try to detect language from the transcript
+                            detected_lang = self.translator.detect_language(transcript)
+                            return transcript, detected_lang
+                    except Exception as e:
+                        logger.warning(f"[WARN] AssemblyAI failed: {e}")
+                        logger.info("[INFO] Falling back to Google Speech-to-Text...")
+                
+                # Step 2: Fallback to Google Speech-to-Text
                 if self.voice_transcriber.services_available.get('google_speech', False):
-                    logger.info("[INFO] Trying Google Speech-to-Text with auto-detection...")
+                    logger.info("[INFO] Trying Google Speech-to-Text as fallback...")
                     try:
                         transcript = self._transcribe_with_google_speech(temp_audio_path, None)  # None for auto-detection
                         if transcript:
@@ -394,23 +408,8 @@ class TelegramBot:
                             return transcript, detected_lang
                     except (GoogleAPICallError, ResourceExhausted) as e:
                         logger.warning(f"[WARN] Google API failed: {e}")
-                        logger.info("[INFO] Falling back to AssemblyAI...")
                     except Exception as e:
                         logger.warning(f"[WARN] Google Speech unexpected error: {e}")
-                        logger.info("[INFO] Falling back to AssemblyAI...")
-                
-                # Step 2: Fallback to AssemblyAI for full transcription
-                if self.voice_transcriber.services_available.get('assemblyai', False):
-                    logger.info("[INFO] Trying AssemblyAI transcription as fallback...")
-                    try:
-                        transcript = self.voice_transcriber._transcribe_with_assemblyai(temp_audio_path)
-                        if transcript:
-                            logger.info("[SUCCESS] AssemblyAI transcription successful")
-                            # Try to detect language from the transcript
-                            detected_lang = self.translator.detect_language(transcript)
-                            return transcript, detected_lang
-                    except Exception as e:
-                        logger.error(f"[ERROR] AssemblyAI failed: {e}")
                 
                 logger.error("[FATAL] All transcription services failed")
                 return None
@@ -482,12 +481,18 @@ class TelegramBot:
                 )
             else:
                 # Use auto language detection with multiple language hints
-                # Common languages for better auto-detection
+                # Extended list including Hebrew and other languages
                 config = speech.RecognitionConfig(
                     encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
                     sample_rate_hertz=48000,
                     language_code="en-US",  # Primary language hint
-                    alternative_language_codes=["es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", "ja-JP", "ko-KR", "zh-CN"],
+                    alternative_language_codes=[
+                        "es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", 
+                        "ja-JP", "ko-KR", "zh-CN", "he-IL", "ar-SA", "hi-IN",
+                        "tr-TR", "pl-PL", "nl-NL", "sv-SE", "da-DK", "no-NO",
+                        "fi-FI", "cs-CZ", "sk-SK", "hu-HU", "ro-RO", "bg-BG",
+                        "hr-HR", "sl-SI", "et-EE", "lv-LV", "lt-LT", "mt-MT"
+                    ],
                     enable_automatic_punctuation=True
                 )
             
