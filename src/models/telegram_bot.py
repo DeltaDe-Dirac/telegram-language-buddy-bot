@@ -447,9 +447,11 @@ class TelegramBot:
                 config=aai.TranscriptionConfig(language_detection=True)
             )
             
-            if transcript.language_code:
-                logger.info(f"[INFO] AssemblyAI detected language: {transcript.language_code}")
-                return transcript.language_code
+            # The detected language code is inside the JSON response
+            lang_code = transcript.json_response.get("language_code", None)
+            if lang_code:
+                logger.info(f"[INFO] AssemblyAI detected language: {lang_code}")
+                return lang_code
             else:
                 logger.warning("[WARN] AssemblyAI language detection returned no language code")
                 return None
