@@ -137,6 +137,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+!.env.example
 .venv
 env/
 venv/
@@ -208,3 +209,6 @@ __marimo__/
 
 # Bot data files (local development only)
 bot_data.db
+
+# Service account credentials
+gothic-state-service-account.json
