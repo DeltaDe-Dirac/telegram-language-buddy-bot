@@ -104,13 +104,14 @@ A smart translation bot that provides instant language conversion using Google T
 
 ### Environment Variables
 
-Create a `.env` file in the project root (or copy `env_template.txt` to `.env` and fill in your values):
+Create a `.env` file in the project root (you can copy from `.env.example` as a template):
 
 ```env
 # Required variables
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 FLASK_ENV=development
 DATABASE_URL=sqlite:///bot_data.db
+SONAR_TOKEN=your_sonarqube_token_here
 PORT=5000
 
 # Optional: Voice transcription API keys
@@ -139,6 +140,7 @@ export PORT=5000
 - `FLASK_ENV` - Set to 'development' for local work, 'production' for Heroku
 - `DATABASE_URL` - Database connection string (auto-configured)
 - `PORT` - Server port (auto-configured by Heroku)
+- `SONAR_TOKEN` - SonarQube authentication token for code quality analysis
 
 **Optional Voice Transcription API Keys:**
 - `ASSEMBLYAI_API_KEY` - AssemblyAI API key for voice transcription (recommended)
