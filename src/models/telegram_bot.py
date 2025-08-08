@@ -382,9 +382,23 @@ class TelegramBot:
                 transcript = None
                 detected_lang = None
                 
-                # Step 1: Try AssemblyAI first (better for Hebrew and other languages)
+                # Step 1: Try Whisper API first (best for Hebrew and many languages)
+                if self.voice_transcriber.services_available.get('whisper', False):
+                    logger.info("[INFO] Trying Whisper API transcription first...")
+                    try:
+                        transcript = self.voice_transcriber.whisper_transcriber.transcribe_audio(temp_audio_path)
+                        if transcript:
+                            logger.info("[SUCCESS] Whisper transcription successful")
+                            # Try to detect language from the transcript
+                            detected_lang = self.translator.detect_language(transcript)
+                            return transcript, detected_lang
+                    except Exception as e:
+                        logger.warning(f"[WARN] Whisper failed: {e}")
+                        logger.info("[INFO] Falling back to AssemblyAI...")
+                
+                # Step 2: Try AssemblyAI (good fallback)
                 if self.voice_transcriber.services_available.get('assemblyai', False):
-                    logger.info("[INFO] Trying AssemblyAI transcription first...")
+                    logger.info("[INFO] Trying AssemblyAI transcription...")
                     try:
                         transcript = self.voice_transcriber._transcribe_with_assemblyai(temp_audio_path)
                         if transcript:
@@ -396,9 +410,9 @@ class TelegramBot:
                         logger.warning(f"[WARN] AssemblyAI failed: {e}")
                         logger.info("[INFO] Falling back to Google Speech-to-Text...")
                 
-                # Step 2: Fallback to Google Speech-to-Text
+                # Step 3: Try Google Speech-to-Text (final fallback)
                 if self.voice_transcriber.services_available.get('google_speech', False):
-                    logger.info("[INFO] Trying Google Speech-to-Text as fallback...")
+                    logger.info("[INFO] Trying Google Speech-to-Text as final fallback...")
                     try:
                         transcript = self._transcribe_with_google_speech(temp_audio_path, None)  # None for auto-detection
                         if transcript:
