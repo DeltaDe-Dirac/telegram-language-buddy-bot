@@ -31,6 +31,17 @@ class FreeTranslator:
             'ko': range(0xAC00, 0xD7AF),  # Hangul (Korean)
             'ja': range(0x3040, 0x3100),  # Hiragana
             'zh': range(0x4E00, 0x9FFF),  # CJK Unified Ideographs
+            'ru': range(0x0400, 0x0500),  # Cyrillic (Russian)
+            'uk': range(0x0400, 0x0500),  # Cyrillic (Ukrainian)
+            'bg': range(0x0400, 0x0500),  # Cyrillic (Bulgarian)
+            'sr': range(0x0400, 0x0500),  # Cyrillic (Serbian)
+            'el': range(0x0370, 0x0400),  # Greek
+        }
+        
+        # Set of languages that use predominantly non-Latin scripts
+        self.non_latin_langs = {
+            'he','ar','th','hi','bn','ta','te','gu','kn','ml','si','my','ka','am','ko','ja','zh',
+            'ru','uk','bg','sr','el','fa','ur','km','lo','ne','pa','or','mk','mn'
         }
         
         # Language code mapping for googletrans inconsistencies
@@ -98,14 +109,17 @@ class FreeTranslator:
             logger.error(f"Google Translate failed: {e}")
             return None
     
-    def detect_language(self, text: str) -> str:
-        """Detect language of text using multiple methods for accuracy"""
+    def detect_language(self, text: str, allowed_langs: Optional[Tuple[str, str]] = None) -> str:
+        """Detect language of text using multiple methods for accuracy.
+        Optionally bias detection towards allowed_langs (e.g., chat language pair)."""
         try:
             from googletrans import Translator
             translator = Translator()
             
             # Clean the text first
             clean_text = ' '.join(text.split())
+            if not clean_text or not isinstance(clean_text, str):
+                return 'unknown'
             
             # Method 1: Google Translate detection
             detection = asyncio.run(translator.detect(clean_text))
@@ -120,14 +134,83 @@ class FreeTranslator:
                 detected_code, confidence, script_detection, clean_text
             )
             
-            logger.info(f"Language detection: Google='{detected_code}' (conf={confidence:.2f}), "
-                       f"Script='{script_detection}', Final='{final_code}'")
+            # Optional: bias towards allowed languages when applicable
+            if allowed_langs:
+                allowed_set = {self.language_mapping.get(code, code) for code in allowed_langs}
+                mapped_final = self.language_mapping.get(final_code, final_code)
+                
+                if mapped_final not in allowed_set:
+                    logger.info(f"Detected '{mapped_final}' not in allowed {allowed_set}. Applying pair-constrained logic.")
+                    
+                    # Case: Romanized text for a non-Latin language in the allowed pair
+                    non_latin_in_pair = [l for l in allowed_set if l in self.non_latin_langs]
+                    latin_in_pair = [l for l in allowed_set if l not in self.non_latin_langs]
+                    if (
+                        len(non_latin_in_pair) == 1 and len(latin_in_pair) == 1 and
+                        self._is_latin_only_text(clean_text) and
+                        (script_detection is None or script_detection not in allowed_set) and
+                        confidence < 0.90  # only override when Google's confidence isn't very high
+                    ):
+                        assumed = non_latin_in_pair[0]
+                        logger.info(
+                            f"Assuming romanized {assumed} within allowed pair {allowed_set} "
+                            f"(latin-only text, low confidence {confidence:.2f})"
+                        )
+                        return assumed
+                    
+                    # If script detection matches an allowed language, prefer it
+                    if script_detection in allowed_set:
+                        logger.info(f"Using script-based detection within allowed set: {script_detection}")
+                        return script_detection  # type: ignore
+                    
+                    # If Google confidence is moderate/low, try targeted detection using translation src
+                    if confidence < 0.85:
+                        targeted = self._targeted_detection_with_allowed(translator, clean_text, allowed_set)
+                        if targeted:
+                            logger.info(f"Targeted detection selected: {targeted}")
+                            return targeted
+            
+            logger.info(
+                f"Language detection: Google='{detected_code}' (conf={confidence:.2f}), "
+                f"Script='{script_detection}', Final='{final_code}'"
+            )
             
             return final_code
             
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Language detection failed: {e}")
             return 'unknown'
+    
+    def _is_latin_only_text(self, text: str) -> bool:
+        """Return True if the text contains only Latin letters, digits, whitespace, or punctuation."""
+        for ch in text:
+            if ch.isalpha():
+                name = unicodedata.name(ch, '')
+                if 'LATIN' not in name and not ch.isascii():
+                    return False
+        return True
+    
+    def _targeted_detection_with_allowed(self, translator, text: str, allowed_set: set[str]) -> Optional[str]:
+        """Try translating while constraining to allowed languages and infer source from result.src.
+        This is generic and avoids language-specific patches."""
+        try:
+            candidates: Dict[str, int] = {}
+            for candidate in allowed_set:
+                # Translate to the other allowed language or to English as a neutral target if only one
+                dest_lang = next((l for l in allowed_set if l != candidate), 'en')
+                result = asyncio.run(translator.translate(text, dest=dest_lang))
+                src_lang = self.language_mapping.get(getattr(result, 'src', ''), getattr(result, 'src', ''))
+                if src_lang in allowed_set:
+                    candidates[src_lang] = candidates.get(src_lang, 0) + 1
+            
+            if candidates:
+                # Pick the candidate with most votes
+                best = max(candidates.items(), key=lambda x: x[1])[0]
+                return best
+            return None
+        except Exception as e:
+            logger.warning(f"Targeted detection failed: {e}")
+            return None
     
     def _detect_script_by_unicode(self, text: str) -> Optional[str]:
         """Detect script/language using Unicode character ranges"""

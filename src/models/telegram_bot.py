@@ -298,7 +298,7 @@ class TelegramBot:
                 return
             
             # Detect language first
-            detected_lang = self.translator.detect_language(transcription)
+            detected_lang = self.translator.detect_language(transcription, allowed_langs=(lang1, lang2))
             logger.info(f"Detected language for voice transcription: {detected_lang}")
             
             # Determine target language based on detected language and language pair
@@ -361,7 +361,7 @@ class TelegramBot:
         # Get user language pair
         lang1, lang2 = self.get_user_language_pair(chat_id)
         logger.info(f"Chat {chat_id} has language pair {lang1}-{lang2}")
-        detected_lang = self.translator.detect_language(text)
+        detected_lang = self.translator.detect_language(text, allowed_langs=(lang1, lang2))
         logger.info(f"Detected language for text '{text[:20]}...': {detected_lang}")
         
         # Determine target language based on detected language and language pair
@@ -500,7 +500,7 @@ class TelegramBot:
             self.send_message(chat_id, response)
             return
         
-        detected_lang = self.translator.detect_language(text)
+        detected_lang = self.translator.detect_language(text, allowed_langs=(lang1, lang2))
         response += self._build_new_translation_response(
             text, detected_lang, target_lang, chat_id, message_id, user_id
         )
@@ -519,7 +519,7 @@ class TelegramBot:
     def _get_target_language_for_edit(self, chat_id: int, text: str) -> str | None:
         """Get target language for edited message"""
         lang1, lang2 = self.get_user_language_pair(chat_id)
-        detected_lang = self.translator.detect_language(text)
+        detected_lang = self.translator.detect_language(text, allowed_langs=(lang1, lang2))
         
         if detected_lang == lang1:
             return lang2
