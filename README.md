@@ -49,6 +49,13 @@ A smart translation bot that provides instant language conversion using Google T
    set FLASK_ENV=development
    set PORT=5000
    ```
+   
+   **Optional**: For voice message transcription, add API keys:
+   ```cmd
+   set WHISPER_API_KEY=your_openai_whisper_api_key_here
+   set HUGGINGFACE_TOKEN=your_huggingface_token_here
+   set OPENAI_API_KEY=your_openai_api_key_here
+   ```
 
 5. **Run the bot**
    ```cmd
@@ -82,6 +89,13 @@ A smart translation bot that provides instant language conversion using Google T
    export FLASK_ENV=development
    export PORT=5000
    ```
+   
+   **Optional**: For voice message transcription, add API keys:
+   ```bash
+   export WHISPER_API_KEY=your_openai_whisper_api_key_here
+   export HUGGINGFACE_TOKEN=your_huggingface_token_here
+   export OPENAI_API_KEY=your_openai_api_key_here
+   ```
 
 5. **Run the bot**
    ```bash
@@ -92,12 +106,19 @@ A smart translation bot that provides instant language conversion using Google T
 
 ### Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root (or copy `env_template.txt` to `.env` and fill in your values):
 
 ```env
+# Required variables
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 FLASK_ENV=development
 DATABASE_URL=sqlite:///bot_data.db
+PORT=5000
+
+# Optional: Voice transcription API keys
+WHISPER_API_KEY=your_openai_whisper_api_key_here
+HUGGINGFACE_TOKEN=your_huggingface_token_here
+OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 Or set them directly in your shell:
