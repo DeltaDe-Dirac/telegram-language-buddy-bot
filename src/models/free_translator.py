@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -40,10 +41,11 @@ class FreeTranslator:
             # Clean text - remove extra whitespace
             clean_text = ' '.join(text.split())
             
+            # Run the async translation
             if source_lang == 'auto':
-                result = translator.translate(clean_text, dest=target_lang)
+                result = asyncio.run(translator.translate(clean_text, dest=target_lang))
             else:
-                result = translator.translate(clean_text, src=source_lang, dest=target_lang)
+                result = asyncio.run(translator.translate(clean_text, src=source_lang, dest=target_lang))
             
             translated_text = result.text
             logger.info(f"Google Translate result: {translated_text[:100]}...")
@@ -70,7 +72,9 @@ class FreeTranslator:
         try:
             from googletrans import Translator
             translator = Translator()
-            detection = translator.detect(text)
+            
+            # Run the async detection
+            detection = asyncio.run(translator.detect(text))
             detected_code = detection.lang
             
             # Map googletrans language codes to our supported codes

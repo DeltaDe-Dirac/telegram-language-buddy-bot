@@ -2,16 +2,26 @@ import unittest
 from unittest.mock import patch, MagicMock
 import sys
 import os
+import asyncio
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Mock googletrans before importing FreeTranslator
+async def mock_translate(self, text, dest=None, src=None):
+    return type('MockResult', (), {'text': f"Translated: {text}"})()
+
+async def mock_detect(self, text):
+    if text and isinstance(text, str):
+        return type('MockDetect', (), {'lang': 'en'})()
+    else:
+        raise Exception("Invalid input")
+
 sys.modules['googletrans'] = type('MockModule', (), {
     'Translator': type('MockTranslator', (), {
         '__init__': lambda self: None,
-        'translate': lambda self, text, dest=None, src=None: type('MockResult', (), {'text': f"Translated: {text}"})(),
-        'detect': lambda self, text: type('MockDetect', (), {'lang': 'en'})() if text and isinstance(text, str) else Exception("Invalid input")
+        'translate': mock_translate,
+        'detect': mock_detect
     })
 })
 
