@@ -438,8 +438,28 @@ class TelegramBot:
             if self.voice_transcriber.google_credentials_json:
                 import json
                 from google.oauth2 import service_account
-                credentials_info = json.loads(self.voice_transcriber.google_credentials_json)
-                credentials = service_account.Credentials.from_service_account_info(credentials_info)
+                try:
+                    logger.info(f"[DEBUG] Google credentials JSON length: {len(self.voice_transcriber.google_credentials_json)}")
+                    logger.info(f"[DEBUG] Google credentials JSON preview: {self.voice_transcriber.google_credentials_json[:100]}...")
+                    
+                    # Check if JSON is empty or just whitespace
+                    if not self.voice_transcriber.google_credentials_json.strip():
+                        logger.error("[ERROR] Google credentials JSON is empty or contains only whitespace")
+                        raise ValueError("Empty Google credentials JSON")
+                    
+                    credentials_info = json.loads(self.voice_transcriber.google_credentials_json)
+                    credentials = service_account.Credentials.from_service_account_info(credentials_info)
+                    logger.info("[DEBUG] Successfully created Google credentials from JSON")
+                except json.JSONDecodeError as e:
+                    logger.error(f"[ERROR] Failed to parse Google credentials JSON: {e}")
+                    logger.error(f"[ERROR] JSON content (first 200 chars): {self.voice_transcriber.google_credentials_json[:200]}")
+                    logger.error("[ERROR] Please ensure GOOGLE_APPLICATION_CREDENTIALS_JSON contains valid JSON")
+                except ValueError as e:
+                    logger.error(f"[ERROR] Google credentials validation failed: {e}")
+                except Exception as e:
+                    logger.error(f"[ERROR] Failed to create Google credentials: {e}")
+            else:
+                logger.warning("[WARN] No Google credentials JSON available - GOOGLE_APPLICATION_CREDENTIALS_JSON not set")
             
             # Create client with credentials
             if credentials:
