@@ -142,10 +142,21 @@ class VoiceTranscriber:
             aai.settings.api_key = self.assemblyai_api_key
             transcriber = aai.Transcriber()
             
-            transcript = transcriber.transcribe(
-                audio_path,
-                config=aai.TranscriptionConfig(language_detection=True)
+            # Enhanced configuration for better language detection
+            config = aai.TranscriptionConfig(
+                language_detection=True,
+                # Add language hints for better accuracy
+                language_code="he",  # Try Hebrew first
+                # Additional parameters for better transcription
+                punctuate=True,
+                format_text=True,
+                # Enable diarization for better speaker separation
+                speaker_labels=True,
+                # Improve accuracy for short audio
+                boost_param="high"
             )
+            
+            transcript = transcriber.transcribe(audio_path, config=config)
             
             if transcript.text:
                 logger.info(f"[SUCCESS] AssemblyAI transcription: '{transcript.text[:50]}...'")
@@ -170,12 +181,18 @@ class VoiceTranscriber:
             
             audio = speech.RecognitionAudio(content=content)
             
-            # Use auto language detection
+            # Enhanced configuration for better language detection
             config = speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
                 sample_rate_hertz=48000,  # Telegram voice messages are typically 48kHz
-                language_code="en-US",  # Default, will auto-detect
-                enable_automatic_punctuation=True
+                # Try Hebrew first, then auto-detect
+                language_code="he-IL",  # Hebrew (Israel)
+                alternative_language_codes=["en-US", "ru-RU", "ar-IL"],  # Fallback languages
+                enable_automatic_punctuation=True,
+                enable_word_time_offsets=True,
+                enable_word_confidence=True,
+                # Use enhanced models for better accuracy
+                use_enhanced=True
             )
             
             response = client.recognize(config=config, audio=audio)
@@ -195,7 +212,7 @@ class VoiceTranscriber:
             logger.error(f"[ERROR] Google Speech unexpected error: {e}")
             return None
     
-    def transcribe_voice_message(self, file_id: str) -> Optional[str]:
+    def transcribe_voice_message(self, file_id: str, language_hint: Optional[str] = None) -> Optional[str]:
         """Transcribe voice message with intelligent fallback strategy"""
         logger.info(f"Starting voice transcription for file: {file_id}")
         
@@ -216,19 +233,19 @@ class VoiceTranscriber:
         try:
             transcript = None
             
-            # Step 1: Try AssemblyAI (primary service)
+            # Step 1: Try AssemblyAI with language hint (primary service)
             if self.services_available.get('assemblyai', False):
                 logger.info("[INFO] Trying AssemblyAI transcription...")
-                transcript = self._transcribe_with_assemblyai(temp_audio_path)
+                transcript = self._transcribe_with_assemblyai_hinted(temp_audio_path, language_hint)
                 if transcript:
                     return transcript
             
-            # Step 2: Try Google Speech-to-Text
+            # Step 2: Try Google Speech-to-Text with language hint
             if self.services_available.get('google_speech', False):
                 logger.info("[INFO] Trying Google Speech-to-Text...")
                 
                 try:
-                    transcript = self._transcribe_with_google_speech(temp_audio_path)
+                    transcript = self._transcribe_with_google_speech_hinted(temp_audio_path, language_hint)
                     if transcript:
                         return transcript
                 except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
@@ -243,6 +260,202 @@ class VoiceTranscriber:
                 os.unlink(temp_audio_path)
             except (OSError, ImportError, AttributeError, ValueError) as e:
                 logger.warning(f"Failed to clean up temp file: {e}")
+    
+    def _transcribe_with_assemblyai_hinted(self, audio_path: str, language_hint: Optional[str] = None) -> Optional[str]:
+        """Transcribe with AssemblyAI using language hints"""
+        try:
+            self._respect_rate_limit('assemblyai')
+            
+            aai.settings.api_key = self.assemblyai_api_key
+            transcriber = aai.Transcriber()
+            
+            # Map language hints to AssemblyAI language codes
+            language_mapping = {
+                'he': 'he',
+                'ru': 'ru',
+                'en': 'en',
+                'ar': 'ar',
+                'fr': 'fr',
+                'es': 'es',
+                'de': 'de',
+                'it': 'it',
+                'pt': 'pt',
+                'ja': 'ja',
+                'ko': 'ko',
+                'zh': 'zh',
+                'th': 'th',
+                'hi': 'hi',
+                'bn': 'bn',
+                'ta': 'ta',
+                'te': 'te',
+                'kn': 'kn',
+                'ml': 'ml',
+                'gu': 'gu',
+                'pa': 'pa',
+                'or': 'or',
+                'si': 'si',
+                'my': 'my',
+                'ka': 'ka',
+                'am': 'am',
+                'uk': 'uk',
+                'bg': 'bg',
+                'sr': 'sr',
+                'el': 'el',
+                'fa': 'fa',
+                'ur': 'ur',
+                'vi': 'vi',
+                'id': 'id',
+                'ms': 'ms',
+                'tl': 'tl',
+                'cs': 'cs',
+                'sk': 'sk',
+                'hu': 'hu',
+                'ro': 'ro',
+                'hr': 'hr',
+                'sl': 'sl',
+                'et': 'et',
+                'lv': 'lv',
+                'lt': 'lt',
+                'pl': 'pl',
+                'nl': 'nl',
+                'sv': 'sv',
+                'da': 'da',
+                'no': 'no',
+                'fi': 'fi',
+                'tr': 'tr'
+            }
+            
+            # Use language hint if available, otherwise default to Hebrew
+            lang_code = language_mapping.get(language_hint, 'he') if language_hint else 'he'
+            
+            # Enhanced configuration for better language detection
+            config = aai.TranscriptionConfig(
+                language_detection=True,
+                # Add language hints for better accuracy
+                language_code=lang_code,
+                # Additional parameters for better transcription
+                punctuate=True,
+                format_text=True,
+                # Enable diarization for better speaker separation
+                speaker_labels=True,
+                # Improve accuracy for short audio
+                boost_param="high"
+            )
+            
+            transcript = transcriber.transcribe(audio_path, config=config)
+            
+            if transcript.text:
+                logger.info(f"[SUCCESS] AssemblyAI transcription ({lang_code}): '{transcript.text[:50]}...'")
+                return transcript.text.strip()
+            else:
+                logger.warning("[WARN] AssemblyAI returned empty transcription")
+                return None
+                
+        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+            logger.error(f"[ERROR] AssemblyAI transcription failed: {e}")
+            return None
+    
+    def _transcribe_with_google_speech_hinted(self, audio_path: str, language_hint: Optional[str] = None) -> Optional[str]:
+        """Transcribe with Google Speech using language hints"""
+        try:
+            self._respect_rate_limit('google_speech')
+            
+            client = speech.SpeechClient()
+            
+            with open(audio_path, "rb") as f:
+                content = f.read()
+            
+            audio = speech.RecognitionAudio(content=content)
+            
+            # Map language hints to Google Speech language codes
+            language_mapping = {
+                'he': 'he-IL',
+                'ru': 'ru-RU',
+                'en': 'en-US',
+                'ar': 'ar-IL',
+                'fr': 'fr-FR',
+                'es': 'es-ES',
+                'de': 'de-DE',
+                'it': 'it-IT',
+                'pt': 'pt-PT',
+                'ja': 'ja-JP',
+                'ko': 'ko-KR',
+                'zh': 'zh-CN',
+                'th': 'th-TH',
+                'hi': 'hi-IN',
+                'bn': 'bn-IN',
+                'ta': 'ta-IN',
+                'te': 'te-IN',
+                'kn': 'kn-IN',
+                'ml': 'ml-IN',
+                'gu': 'gu-IN',
+                'pa': 'pa-IN',
+                'or': 'or-IN',
+                'si': 'si-LK',
+                'my': 'my-MM',
+                'ka': 'ka-GE',
+                'am': 'am-ET',
+                'uk': 'uk-UA',
+                'bg': 'bg-BG',
+                'sr': 'sr-RS',
+                'el': 'el-GR',
+                'fa': 'fa-IR',
+                'ur': 'ur-PK',
+                'vi': 'vi-VN',
+                'id': 'id-ID',
+                'ms': 'ms-MY',
+                'tl': 'tl-PH',
+                'cs': 'cs-CZ',
+                'sk': 'sk-SK',
+                'hu': 'hu-HU',
+                'ro': 'ro-RO',
+                'hr': 'hr-HR',
+                'sl': 'sl-SI',
+                'et': 'et-EE',
+                'lv': 'lv-LV',
+                'lt': 'lt-LT',
+                'pl': 'pl-PL',
+                'nl': 'nl-NL',
+                'sv': 'sv-SE',
+                'da': 'da-DK',
+                'no': 'no-NO',
+                'fi': 'fi-FI',
+                'tr': 'tr-TR'
+            }
+            
+            # Use language hint if available, otherwise default to Hebrew
+            primary_lang = language_mapping.get(language_hint, 'he-IL') if language_hint else 'he-IL'
+            
+            # Enhanced configuration for better language detection
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+                sample_rate_hertz=48000,  # Telegram voice messages are typically 48kHz
+                # Try primary language first, then auto-detect
+                language_code=primary_lang,
+                alternative_language_codes=["en-US", "ru-RU", "ar-IL"],  # Fallback languages
+                enable_automatic_punctuation=True,
+                enable_word_time_offsets=True,
+                enable_word_confidence=True,
+                # Use enhanced models for better accuracy
+                use_enhanced=True
+            )
+            
+            response = client.recognize(config=config, audio=audio)
+            
+            if response.results:
+                transcript = " ".join([result.alternatives[0].transcript for result in response.results])
+                logger.info(f"[SUCCESS] Google Speech transcription ({primary_lang}): '{transcript[:50]}...'")
+                return transcript.strip()
+            else:
+                logger.warning("[WARN] Google Speech returned empty transcription")
+                return None
+                
+        except (GoogleAPICallError, ResourceExhausted) as e:
+            logger.error(f"[ERROR] Google Speech API failed: {e}")
+            return None
+        except (OSError, ImportError, AttributeError, ValueError) as e:
+            logger.error(f"[ERROR] Google Speech unexpected error: {e}")
+            return None
     
     def get_service_status(self) -> Dict[str, Dict]:
         """Get status of all transcription services"""

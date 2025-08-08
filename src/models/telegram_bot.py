@@ -276,8 +276,11 @@ class TelegramBot:
             
             logger.info(f"Processing voice message from {user_name} (duration: {duration}s)")
             
-            # Transcribe the voice message first (no initial message)
-            transcription = self.voice_transcriber.transcribe_voice_message(file_id)
+            # Get user language pair for transcription hint
+            lang1, lang2 = self.get_user_language_pair(chat_id)
+            
+            # Transcribe the voice message with language hint
+            transcription = self.voice_transcriber.transcribe_voice_message(file_id, language_hint=lang1)
             
             if not transcription:
                 error_msg = f"❌ *Voice transcription failed*\n\n👤 **{user_name}:**\n⚠️ **Error:** Unable to transcribe this voice message.\n\n"
@@ -289,8 +292,7 @@ class TelegramBot:
                 self.send_message(chat_id, error_msg)
                 return
             
-            # Check if user has language pair set
-            lang1, lang2 = self.get_user_language_pair(chat_id)
+            # Check if user has language pair set for translation
             if not lang1 or not lang2:
                 # No language pair set, just show transcription
                 response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
