@@ -433,7 +433,19 @@ class TelegramBot:
         try:
             self.voice_transcriber._respect_rate_limit('google_speech')
             
-            client = speech.SpeechClient()
+            # Create credentials from JSON if available
+            credentials = None
+            if self.voice_transcriber.google_credentials_json:
+                import json
+                from google.oauth2 import service_account
+                credentials_info = json.loads(self.voice_transcriber.google_credentials_json)
+                credentials = service_account.Credentials.from_service_account_info(credentials_info)
+            
+            # Create client with credentials
+            if credentials:
+                client = speech.SpeechClient(credentials=credentials)
+            else:
+                client = speech.SpeechClient()
             
             with open(audio_path, "rb") as f:
                 content = f.read()
