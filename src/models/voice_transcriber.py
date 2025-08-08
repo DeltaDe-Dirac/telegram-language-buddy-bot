@@ -29,11 +29,16 @@ class VoiceTranscriber:
         
     def _check_service_availability(self) -> Dict[str, bool]:
         """Check which transcription services are available"""
-        return {
+        services = {
             'whisper_api': bool(self.whisper_api_key),
             'huggingface': bool(self.huggingface_token),
             'openai_whisper': bool(self.openai_api_key),
         }
+        
+        # Log service availability for debugging
+        logger.info(f"Voice transcription services available: {services}")
+        
+        return services
     
     def _respect_rate_limit(self, service: str) -> None:
         """Ensure rate limiting is respected for each service"""
@@ -120,7 +125,7 @@ class VoiceTranscriber:
             self._respect_rate_limit('huggingface')
             
             # Use a free Whisper model on Hugging Face
-            url = "https://api-inference.huggingface.co/models/openai/whisper-base"
+            url = "https://api-inference.huggingface.co/models/openai/whisper-tiny"
             headers = {
                 "Authorization": f"Bearer {self.huggingface_token}"
             }
