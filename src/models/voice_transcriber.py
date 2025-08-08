@@ -34,16 +34,49 @@ class VoiceTranscriber:
         
         # API keys and endpoints
         self.assemblyai_api_key = os.getenv('ASSEMBLYAI_API_KEY')
-        self.google_credentials = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        
+        # Handle Google credentials - JSON string only
+        self.google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+        
+        # Set up Google credentials if JSON is provided
+        if self.google_credentials_json:
+            self._setup_google_credentials_from_json()
+        else:
+            logger.warning("No Google credentials found (GOOGLE_APPLICATION_CREDENTIALS_JSON not set)")
         
         # Service availability flags
         self.services_available = self._check_service_availability()
-        
+    
+    def _setup_google_credentials_from_json(self) -> None:
+        """Set up Google credentials from JSON string"""
+        try:
+            import json
+            import tempfile
+            from google.oauth2 import service_account
+            
+            # Parse the JSON credentials
+            credentials_info = json.loads(self.google_credentials_json)
+            
+            # Create credentials object
+            credentials = service_account.Credentials.from_service_account_info(credentials_info)
+            
+            # Set the credentials for the Google Cloud client library
+            import google.auth
+            google.auth.default_credentials = credentials
+            
+            logger.info("Successfully set up Google credentials from JSON")
+            
+        except Exception as e:
+            logger.error(f"Failed to set up Google credentials from JSON: {e}")
+    
     def _check_service_availability(self) -> Dict[str, bool]:
         """Check which transcription services are available"""
+        # Check if Google credentials are available (JSON only)
+        google_creds_available = bool(self.google_credentials_json)
+        
         services = {
             'assemblyai': bool(self.assemblyai_api_key and ASSEMBLYAI_AVAILABLE),
-            'google_speech': bool(self.google_credentials and GOOGLE_SPEECH_AVAILABLE),
+            'google_speech': bool(google_creds_available and GOOGLE_SPEECH_AVAILABLE),
         }
         
         # Log service availability for debugging
