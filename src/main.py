@@ -1,6 +1,10 @@
 import os
 import logging
 from flask import Flask
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from .controllers import home, webhook, set_webhook, manual_translate, get_stats, get_voice_status
 

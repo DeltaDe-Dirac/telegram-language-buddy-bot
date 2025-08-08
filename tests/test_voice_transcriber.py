@@ -11,7 +11,7 @@ class TestVoiceTranscriber:
         """Set up test environment"""
         # Clear environment variables for testing
         self.original_env = {}
-        for key in ['ASSEMBLYAI_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS', 'TELEGRAM_BOT_TOKEN']:
+        for key in ['ASSEMBLYAI_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS', 'GOOGLE_APPLICATION_CREDENTIALS_JSON', 'TELEGRAM_BOT_TOKEN']:
             if key in os.environ:
                 self.original_env[key] = os.environ[key]
                 del os.environ[key]
@@ -31,7 +31,7 @@ class TestVoiceTranscriber:
     def test_init_with_api_keys(self):
         """Test initialization with API keys"""
         os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'test_credentials.json'
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = '{"type": "service_account", "project_id": "test", "private_key_id": "test", "private_key": "test", "client_email": "test@test.com", "client_id": "test", "auth_uri": "https://accounts.google.com/o/oauth2/auth", "token_uri": "https://oauth2.googleapis.com/token", "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs", "client_x509_cert_url": "test"}'
         
         transcriber = VoiceTranscriber()
         
@@ -79,6 +79,7 @@ class TestVoiceTranscriber:
         # Mock AssemblyAI response
         mock_transcript = Mock()
         mock_transcript.text = "Hello world"
+        mock_transcript.words = []  # Empty words list for confidence calculation
         mock_aai.Transcriber.return_value.transcribe.return_value = mock_transcript
         
         os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
@@ -88,7 +89,10 @@ class TestVoiceTranscriber:
             mock_temp.return_value.__enter__.return_value.name = '/tmp/test.ogg'
             result = transcriber._transcribe_with_assemblyai('/tmp/test.ogg')
         
-        assert result == "Hello world"
+        assert result is not None
+        assert result.text == "Hello world"
+        assert result.service == "assemblyai"
+        assert 0.0 <= result.confidence <= 1.0
     
     @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
     @patch('src.models.voice_transcriber.aai')
@@ -107,30 +111,45 @@ class TestVoiceTranscriber:
     
     @patch('src.models.voice_transcriber.GOOGLE_SPEECH_AVAILABLE', True)
     @patch('src.models.voice_transcriber.speech')
-    def test_transcribe_with_google_speech_success(self, mock_speech):
+    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    def test_transcribe_with_google_speech_success(self, mock_credentials, mock_speech):
         """Test successful Google Speech-to-Text transcription"""
+        # Mock credentials
+        mock_credentials.return_value = Mock()
+        
         # Mock Google Speech response
+        mock_alternative = Mock()
+        mock_alternative.transcript = "Hello world"
+        mock_alternative.confidence = 0.9  # Add confidence score
+        
         mock_result = Mock()
-        mock_result.alternatives = [Mock(transcript="Hello world")]
+        mock_result.alternatives = [mock_alternative]
         mock_response = Mock()
         mock_response.results = [mock_result]
         mock_speech.SpeechClient.return_value.recognize.return_value = mock_response
         
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'test_credentials.json'
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = '{"type": "service_account", "project_id": "test"}'
         transcriber = VoiceTranscriber()
         
         with patch('builtins.open', mock_open(read_data=b'fake_audio')):
             result = transcriber._transcribe_with_google_speech('/tmp/test.ogg')
         
-        assert result == "Hello world"
+        assert result is not None
+        assert result.text == "Hello world"
+        assert result.service == "google_speech"
+        assert 0.0 <= result.confidence <= 1.0
     
     @patch('src.models.voice_transcriber.GOOGLE_SPEECH_AVAILABLE', True)
     @patch('src.models.voice_transcriber.speech')
-    def test_transcribe_with_google_speech_failure(self, mock_speech):
+    @patch('google.oauth2.service_account.Credentials.from_service_account_info')
+    def test_transcribe_with_google_speech_failure(self, mock_credentials, mock_speech):
         """Test Google Speech-to-Text transcription failure"""
+        # Mock credentials
+        mock_credentials.return_value = Mock()
+        
         mock_speech.SpeechClient.return_value.recognize.side_effect = ValueError("API Error")
         
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'test_credentials.json'
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = '{"type": "service_account", "project_id": "test"}'
         transcriber = VoiceTranscriber()
         
         with patch('builtins.open', mock_open(read_data=b'fake_audio')):
@@ -142,8 +161,14 @@ class TestVoiceTranscriber:
     @patch('src.models.voice_transcriber.VoiceTranscriber._transcribe_with_assemblyai')
     def test_transcribe_voice_message_success(self, mock_transcribe, mock_download):
         """Test successful voice message transcription"""
+        from src.models.transcription_result import TranscriptionResult
+        
         mock_download.return_value = b'fake_audio_data'
-        mock_transcribe.return_value = "Hello world"
+        mock_transcribe.return_value = TranscriptionResult(
+            text="Hello world",
+            service="assemblyai",
+            confidence=0.8
+        )
         
         os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
         transcriber = VoiceTranscriber()
@@ -155,9 +180,13 @@ class TestVoiceTranscriber:
         assert result == "Hello world"
     
     @patch('src.models.voice_transcriber.VoiceTranscriber._download_voice_file')
-    def test_transcribe_voice_message_all_fail(self, mock_download):
+    @patch('src.models.voice_transcriber.VoiceTranscriber._transcribe_with_assemblyai')
+    @patch('src.models.voice_transcriber.VoiceTranscriber._transcribe_with_google_speech')
+    def test_transcribe_voice_message_all_fail(self, mock_google, mock_assemblyai, mock_download):
         """Test voice message transcription when all services fail"""
         mock_download.return_value = b'fake_audio_data'
+        mock_assemblyai.return_value = None
+        mock_google.return_value = None
         
         transcriber = VoiceTranscriber()
         
@@ -182,20 +211,16 @@ class TestVoiceTranscriber:
     @patch('time.time')
     def test_respect_rate_limit(self, mock_time, mock_sleep):
         """Test rate limiting functionality"""
-        # Set up time to return 0 for first call, then 0.5 for second call
-        mock_time.side_effect = [0, 0.5]
-        
         transcriber = VoiceTranscriber()
         
-        # First call should sleep because time difference is 0 < min_interval (1)
+        # Test 1: First call should sleep because time difference is 0 < min_interval (1)
+        mock_time.side_effect = [0, 0.5]
         transcriber._respect_rate_limit('assemblyai')
         mock_sleep.assert_called_once_with(1.0)  # Should sleep for full interval
         
-        # Reset mock for second test
+        # Test 2: Second call should not sleep because time difference > min_interval
         mock_sleep.reset_mock()
         mock_time.side_effect = [1.5, 2.0]  # More than 1 second apart
-        
-        # Second call should not sleep because time difference > min_interval
         transcriber._respect_rate_limit('assemblyai')
         mock_sleep.assert_not_called()
 

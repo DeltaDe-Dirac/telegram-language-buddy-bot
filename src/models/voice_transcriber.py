@@ -3,9 +3,10 @@ import logging
 import requests
 import time
 import tempfile
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from urllib.parse import urlparse
 import json
+from .transcription_result import TranscriptionResult, TranscriptionQualityAnalyzer
 
 # Import new transcription services
 try:
@@ -21,6 +22,12 @@ try:
 except ImportError:
     GOOGLE_SPEECH_AVAILABLE = False
 
+try:
+    from .whisper_transcriber import WhisperTranscriber
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 class VoiceTranscriber:
@@ -30,20 +37,56 @@ class VoiceTranscriber:
         self.rate_limits = {
             'assemblyai': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
             'google_speech': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
+            'whisper': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
         }
         
         # API keys and endpoints
         self.assemblyai_api_key = os.getenv('ASSEMBLYAI_API_KEY')
-        self.google_credentials = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        
+        # Handle Google credentials - JSON string only
+        self.google_credentials_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+        
+        # Initialize Whisper transcriber
+        if WHISPER_AVAILABLE:
+            self.whisper_transcriber = WhisperTranscriber()
+        else:
+            self.whisper_transcriber = None
+        
+        # Set up Google credentials if JSON is provided
+        if self.google_credentials_json:
+            self._setup_google_credentials_from_json()
+        else:
+            logger.warning("No Google credentials found (GOOGLE_APPLICATION_CREDENTIALS_JSON not set)")
         
         # Service availability flags
         self.services_available = self._check_service_availability()
-        
+    
+    def _setup_google_credentials_from_json(self) -> None:
+        """Set up Google credentials from JSON string"""
+        try:
+            import json
+            from google.oauth2 import service_account
+            
+            # Parse the JSON credentials to validate they're correct
+            credentials_info = json.loads(self.google_credentials_json)
+            
+            # Create credentials object to validate
+            credentials = service_account.Credentials.from_service_account_info(credentials_info)
+            
+            logger.info("Successfully validated Google credentials from JSON")
+            
+        except Exception as e:
+            logger.error(f"Failed to set up Google credentials from JSON: {e}")
+    
     def _check_service_availability(self) -> Dict[str, bool]:
         """Check which transcription services are available"""
+        # Check if Google credentials are available (JSON only)
+        google_creds_available = bool(self.google_credentials_json)
+        
         services = {
             'assemblyai': bool(self.assemblyai_api_key and ASSEMBLYAI_AVAILABLE),
-            'google_speech': bool(self.google_credentials and GOOGLE_SPEECH_AVAILABLE),
+            'google_speech': bool(google_creds_available and GOOGLE_SPEECH_AVAILABLE),
+            'whisper': bool(self.whisper_transcriber and self.whisper_transcriber.available),
         }
         
         # Log service availability for debugging
@@ -134,8 +177,8 @@ class VoiceTranscriber:
             logger.error(f"[ERROR] AssemblyAI language detection failed: {e}")
             return None
     
-    def _transcribe_with_assemblyai(self, audio_path: str) -> Optional[str]:
-        """Full transcription with AssemblyAI (auto language detection)"""
+    def _transcribe_with_assemblyai(self, audio_path: str) -> Optional[TranscriptionResult]:
+        """Full transcription with AssemblyAI (auto language detection) with confidence scoring"""
         try:
             self._respect_rate_limit('assemblyai')
             
@@ -148,8 +191,25 @@ class VoiceTranscriber:
             )
             
             if transcript.text:
-                logger.info(f"[SUCCESS] AssemblyAI transcription: '{transcript.text[:50]}...'")
-                return transcript.text.strip()
+                # AssemblyAI provides confidence scores for each word
+                # Calculate average confidence across all words
+                confidence = 0.8  # Default confidence
+                
+                if hasattr(transcript, 'words') and transcript.words:
+                    total_confidence = sum(word.confidence for word in transcript.words if hasattr(word, 'confidence'))
+                    confidence = total_confidence / len(transcript.words)
+                else:
+                    # Fallback to text quality analysis
+                    confidence = TranscriptionQualityAnalyzer.calculate_text_quality_score(transcript.text)
+                
+                logger.info(f"[SUCCESS] AssemblyAI transcription: '{transcript.text[:50]}...' (confidence: {confidence:.3f})")
+                
+                return TranscriptionResult(
+                    text=transcript.text.strip(),
+                    service='assemblyai',
+                    confidence=confidence,
+                    raw_response={'text': transcript.text, 'words': transcript.words if hasattr(transcript, 'words') else None}
+                )
             else:
                 logger.warning("[WARN] AssemblyAI returned empty transcription")
                 return None
@@ -158,12 +218,29 @@ class VoiceTranscriber:
             logger.error(f"[ERROR] AssemblyAI transcription failed: {e}")
             return None
     
-    def _transcribe_with_google_speech(self, audio_path: str) -> Optional[str]:
-        """Full transcription using Google Speech-to-Text"""
+    def _transcribe_with_assemblyai_legacy(self, audio_path: str) -> Optional[str]:
+        """Legacy method for backward compatibility - returns just the text"""
+        result = self._transcribe_with_assemblyai(audio_path)
+        return result.text if result else None
+    
+    def _transcribe_with_google_speech(self, audio_path: str) -> Optional[TranscriptionResult]:
+        """Full transcription using Google Speech-to-Text with confidence scoring"""
         try:
             self._respect_rate_limit('google_speech')
             
-            client = speech.SpeechClient()
+            # Create credentials from JSON if available
+            credentials = None
+            if self.google_credentials_json:
+                import json
+                from google.oauth2 import service_account
+                credentials_info = json.loads(self.google_credentials_json)
+                credentials = service_account.Credentials.from_service_account_info(credentials_info)
+            
+            # Create client with credentials
+            if credentials:
+                client = speech.SpeechClient(credentials=credentials)
+            else:
+                client = speech.SpeechClient()
             
             with open(audio_path, "rb") as f:
                 content = f.read()
@@ -181,9 +258,29 @@ class VoiceTranscriber:
             response = client.recognize(config=config, audio=audio)
             
             if response.results:
-                transcript = " ".join([result.alternatives[0].transcript for result in response.results])
-                logger.info(f"[SUCCESS] Google Speech transcription: '{transcript[:50]}...'")
-                return transcript.strip()
+                # Google provides confidence scores for each result
+                total_confidence = 0
+                total_results = 0
+                transcript_parts = []
+                
+                for result in response.results:
+                    if result.alternatives:
+                        alternative = result.alternatives[0]
+                        transcript_parts.append(alternative.transcript)
+                        total_confidence += alternative.confidence
+                        total_results += 1
+                
+                transcript = " ".join(transcript_parts)
+                confidence = total_confidence / total_results if total_results > 0 else 0.8
+                
+                logger.info(f"[SUCCESS] Google Speech transcription: '{transcript[:50]}...' (confidence: {confidence:.3f})")
+                
+                return TranscriptionResult(
+                    text=transcript.strip(),
+                    service='google_speech',
+                    confidence=confidence,
+                    raw_response={'results': [{'transcript': r.alternatives[0].transcript, 'confidence': r.alternatives[0].confidence} for r in response.results if r.alternatives]}
+                )
             else:
                 logger.warning("[WARN] Google Speech returned empty transcription")
                 return None
@@ -195,9 +292,19 @@ class VoiceTranscriber:
             logger.error(f"[ERROR] Google Speech unexpected error: {e}")
             return None
     
+    def _transcribe_with_google_speech_legacy(self, audio_path: str) -> Optional[str]:
+        """Legacy method for backward compatibility - returns just the text"""
+        result = self._transcribe_with_google_speech(audio_path)
+        return result.text if result else None
+    
     def transcribe_voice_message(self, file_id: str) -> Optional[str]:
-        """Transcribe voice message with intelligent fallback strategy"""
-        logger.info(f"Starting voice transcription for file: {file_id}")
+        """Transcribe voice message with intelligent fallback strategy (legacy method)"""
+        result = self.transcribe_voice_message_with_confidence(file_id)
+        return result.text if result else None
+    
+    def transcribe_voice_message_with_confidence(self, file_id: str, confidence_threshold: float = 0.7) -> Optional[TranscriptionResult]:
+        """Transcribe voice message with confidence-based fallback strategy"""
+        logger.info(f"Starting confidence-based voice transcription for file: {file_id}")
         
         # Download the voice file
         audio_data = self._download_voice_file(file_id)
@@ -214,25 +321,62 @@ class VoiceTranscriber:
             return None
         
         try:
-            transcript = None
+            all_results = []
             
-            # Step 1: Try AssemblyAI (primary service)
+            # Step 1: Try Whisper API first (best for Hebrew and many languages)
+            if self.services_available.get('whisper', False):
+                logger.info("[INFO] Trying Whisper API transcription...")
+                try:
+                    result = self.whisper_transcriber.transcribe_audio(temp_audio_path)
+                    if result:
+                        all_results.append(result)
+                        logger.info(f"[INFO] Whisper confidence: {result.confidence:.3f}")
+                        
+                        # If Whisper has high confidence, we can stop here
+                        if result.is_high_confidence(confidence_threshold):
+                            logger.info(f"[INFO] Whisper achieved high confidence ({result.confidence:.3f}), using result")
+                            return result
+                except Exception as e:
+                    logger.warning(f"[WARN] Whisper failed: {e}")
+            
+            # Step 2: Try AssemblyAI (good fallback)
             if self.services_available.get('assemblyai', False):
                 logger.info("[INFO] Trying AssemblyAI transcription...")
-                transcript = self._transcribe_with_assemblyai(temp_audio_path)
-                if transcript:
-                    return transcript
+                try:
+                    result = self._transcribe_with_assemblyai(temp_audio_path)
+                    if result:
+                        all_results.append(result)
+                        logger.info(f"[INFO] AssemblyAI confidence: {result.confidence:.3f}")
+                        
+                        # If AssemblyAI has high confidence, we can stop here
+                        if result.is_high_confidence(confidence_threshold):
+                            logger.info(f"[INFO] AssemblyAI achieved high confidence ({result.confidence:.3f}), using result")
+                            return result
+                except Exception as e:
+                    logger.warning(f"[WARN] AssemblyAI failed: {e}")
             
-            # Step 2: Try Google Speech-to-Text
+            # Step 3: Try Google Speech-to-Text (final fallback)
             if self.services_available.get('google_speech', False):
                 logger.info("[INFO] Trying Google Speech-to-Text...")
-                
                 try:
-                    transcript = self._transcribe_with_google_speech(temp_audio_path)
-                    if transcript:
-                        return transcript
-                except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+                    result = self._transcribe_with_google_speech(temp_audio_path)
+                    if result:
+                        all_results.append(result)
+                        logger.info(f"[INFO] Google Speech confidence: {result.confidence:.3f}")
+                        
+                        # If Google has high confidence, we can stop here
+                        if result.is_high_confidence(confidence_threshold):
+                            logger.info(f"[INFO] Google Speech achieved high confidence ({result.confidence:.3f}), using result")
+                            return result
+                except Exception as e:
                     logger.warning(f"[WARN] Google Speech-to-Text failed: {e}")
+            
+            # Step 4: Compare all results and choose the best one
+            if all_results:
+                logger.info(f"[INFO] Comparing {len(all_results)} transcription results...")
+                best_result = TranscriptionQualityAnalyzer.compare_transcriptions(all_results)
+                logger.info(f"[INFO] Selected {best_result.service} with confidence {best_result.confidence:.3f}")
+                return best_result
             
             logger.error("[FATAL] All transcription services failed")
             return None
@@ -255,5 +399,5 @@ class VoiceTranscriber:
                 }
                 for service, info in self.rate_limits.items()
             },
-            'primary_services': ['assemblyai', 'google_speech']
+            'primary_services': ['whisper', 'assemblyai', 'google_speech']
         }

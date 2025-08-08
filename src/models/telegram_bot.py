@@ -315,6 +315,7 @@ class TelegramBot:
             target_lang = self._determine_target_language(detected_lang, lang1, lang2)
             if not target_lang:
                 # Detected language is not in the pair, show transcription only
+                logger.warning(f"Probably cound't detect language correctly from user {user_name}, sending transcription only")
                 response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
                 if detected_lang:
                     response += f"\n\n🌍 **Detected Language:** {LanguageDetector.SUPPORTED_LANGUAGES.get(detected_lang, detected_lang)}"
@@ -361,111 +362,64 @@ class TelegramBot:
             self.send_message(chat_id, error_msg)
     
     def _transcribe_with_fallback(self, file_id: str) -> Optional[Tuple[str, Optional[str]]]:
-        """Transcribe voice message with intelligent fallback strategy following the Python example pattern"""
+        """Transcribe voice message with confidence-based fallback strategy"""
         try:
-            # Download the voice file
-            audio_data = self.voice_transcriber._download_voice_file(file_id)
-            if not audio_data:
-                logger.error("Failed to download voice file")
-                return None
+            # Use the new confidence-based transcription system
+            result = self.voice_transcriber.transcribe_voice_message_with_confidence(file_id, confidence_threshold=0.7)
             
-            logger.info(f"Downloaded voice file, size: {len(audio_data)} bytes")
-            
-            # Save to temporary file for services that need file paths
-            temp_audio_path = self.voice_transcriber._save_audio_to_temp_file(audio_data)
-            if not temp_audio_path:
-                logger.error("Failed to save audio to temp file")
-                return None
-            
-            try:
-                transcript = None
-                detected_lang = None
-                
-                # Step 1: Try to detect language with AssemblyAI first
-                if self.voice_transcriber.services_available.get('assemblyai', False):
-                    logger.info("[INFO] Trying AssemblyAI language detection...")
-                    try:
-                        detected_lang = self._detect_language_assemblyai(temp_audio_path)
-                        if detected_lang:
-                            logger.info(f"[INFO] Detected language: {detected_lang}")
-                    except Exception as e:
-                        logger.warning(f"[WARN] AssemblyAI language detection failed: {e}")
-                
-                # Step 2: Try Google Speech-to-Text with detected language
-                if self.voice_transcriber.services_available.get('google_speech', False):
-                    logger.info(f"[INFO] Trying Google Speech-to-Text with language {detected_lang or 'auto-detect'}...")
-                    try:
-                        transcript = self._transcribe_with_google_speech(temp_audio_path, detected_lang)
-                        if transcript:
-                            logger.info("[SUCCESS] Google transcription successful")
-                            return transcript, detected_lang
-                    except (GoogleAPICallError, ResourceExhausted) as e:
-                        logger.warning(f"[WARN] Google API failed: {e}")
-                        logger.info("[INFO] Falling back to AssemblyAI...")
-                    except Exception as e:
-                        logger.warning(f"[WARN] Google Speech unexpected error: {e}")
-                        logger.info("[INFO] Falling back to AssemblyAI...")
-                
-                # Step 3: Fallback to AssemblyAI for full transcription
-                if self.voice_transcriber.services_available.get('assemblyai', False):
-                    logger.info("[INFO] Trying AssemblyAI transcription as fallback...")
-                    try:
-                        transcript = self.voice_transcriber._transcribe_with_assemblyai(temp_audio_path)
-                        if transcript:
-                            logger.info("[SUCCESS] AssemblyAI transcription successful")
-                            # If we didn't detect language earlier, try to detect it from the transcript
-                            if not detected_lang:
-                                detected_lang = self.translator.detect_language(transcript)
-                            return transcript, detected_lang
-                    except Exception as e:
-                        logger.error(f"[ERROR] AssemblyAI failed: {e}")
-                
+            if result:
+                logger.info(f"[SUCCESS] Transcription completed using {result.service} with confidence {result.confidence:.3f}")
+                # Try to detect language from the transcript
+                detected_lang = self.translator.detect_language(result.text)
+                return result.text, detected_lang
+            else:
                 logger.error("[FATAL] All transcription services failed")
                 return None
-                
-            finally:
-                # Clean up temporary file
-                try:
-                    os.unlink(temp_audio_path)
-                except (OSError, ImportError, AttributeError, ValueError) as e:
-                    logger.warning(f"Failed to clean up temp file: {e}")
                     
         except Exception as e:
             logger.error(f"Error in transcription fallback: {e}")
             return None
     
-    def _detect_language_assemblyai(self, audio_path: str) -> Optional[str]:
-        """Quickly detect spoken language using AssemblyAI"""
-        try:
-            self.voice_transcriber._respect_rate_limit('assemblyai')
-            
-            aai.settings.api_key = self.voice_transcriber.assemblyai_api_key
-            transcriber = aai.Transcriber()
-            
-            transcript = transcriber.transcribe(
-                audio_path,
-                config=aai.TranscriptionConfig(language_detection=True)
-            )
-            
-            # The detected language code is inside the JSON response
-            lang_code = transcript.json_response.get("language_code", None)
-            if lang_code:
-                logger.info(f"[INFO] AssemblyAI detected language: {lang_code}")
-                return lang_code
-            else:
-                logger.warning("[WARN] AssemblyAI language detection returned no language code")
-                return None
-                
-        except Exception as e:
-            logger.error(f"[ERROR] AssemblyAI language detection failed: {e}")
-            return None
+
     
     def _transcribe_with_google_speech(self, audio_path: str, language_code: Optional[str] = None) -> Optional[str]:
         """Full transcription using Google Speech-to-Text with optional language specification"""
         try:
             self.voice_transcriber._respect_rate_limit('google_speech')
             
-            client = speech.SpeechClient()
+            # Create credentials from JSON if available
+            credentials = None
+            if self.voice_transcriber.google_credentials_json:
+                import json
+                from google.oauth2 import service_account
+                try:
+                    logger.info(f"[DEBUG] Google credentials JSON length: {len(self.voice_transcriber.google_credentials_json)}")
+                    logger.info(f"[DEBUG] Google credentials JSON preview: {self.voice_transcriber.google_credentials_json[:100]}...")
+                    
+                    # Check if JSON is empty or just whitespace
+                    if not self.voice_transcriber.google_credentials_json.strip():
+                        logger.error("[ERROR] Google credentials JSON is empty or contains only whitespace")
+                        raise ValueError("Empty Google credentials JSON")
+                    
+                    credentials_info = json.loads(self.voice_transcriber.google_credentials_json)
+                    credentials = service_account.Credentials.from_service_account_info(credentials_info)
+                    logger.info("[DEBUG] Successfully created Google credentials from JSON")
+                except json.JSONDecodeError as e:
+                    logger.error(f"[ERROR] Failed to parse Google credentials JSON: {e}")
+                    logger.error(f"[ERROR] JSON content (first 200 chars): {self.voice_transcriber.google_credentials_json[:200]}")
+                    logger.error("[ERROR] Please ensure GOOGLE_APPLICATION_CREDENTIALS_JSON contains valid JSON")
+                except ValueError as e:
+                    logger.error(f"[ERROR] Google credentials validation failed: {e}")
+                except Exception as e:
+                    logger.error(f"[ERROR] Failed to create Google credentials: {e}")
+            else:
+                logger.warning("[WARN] No Google credentials JSON available - GOOGLE_APPLICATION_CREDENTIALS_JSON not set")
+            
+            # Create client with credentials
+            if credentials:
+                client = speech.SpeechClient(credentials=credentials)
+            else:
+                client = speech.SpeechClient()
             
             with open(audio_path, "rb") as f:
                 content = f.read()
@@ -481,11 +435,19 @@ class TelegramBot:
                     enable_automatic_punctuation=True
                 )
             else:
-                # Use auto language detection
+                # Use auto language detection with multiple language hints
+                # Extended list including Hebrew and other languages
                 config = speech.RecognitionConfig(
                     encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
                     sample_rate_hertz=48000,
-                    language_code="en-US",  # Default, will auto-detect
+                    language_code="en-US",  # Primary language hint
+                    alternative_language_codes=[
+                        "es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", 
+                        "ja-JP", "ko-KR", "zh-CN", "he-IL", "ar-SA", "hi-IN",
+                        "tr-TR", "pl-PL", "nl-NL", "sv-SE", "da-DK", "no-NO",
+                        "fi-FI", "cs-CZ", "sk-SK", "hu-HU", "ro-RO", "bg-BG",
+                        "hr-HR", "sl-SI", "et-EE", "lv-LV", "lt-LT", "mt-MT"
+                    ],
                     enable_automatic_punctuation=True
                 )
             
@@ -609,6 +571,7 @@ class TelegramBot:
         """Handle inline keyboard callback"""
         try:
             chat_id = callback_query['message']['chat']['id']
+            message_id = callback_query['message']['message_id']
             data = callback_query['data']
             callback_query_id = callback_query['id']
             
@@ -621,11 +584,17 @@ class TelegramBot:
             state = self.db.get_language_selection_state(chat_id)
             if state:
                 logger.info(f"Found language selection state for chat {chat_id}: {state}")
-                self._handle_language_selection(chat_id, data)
+                self._handle_language_selection(chat_id, data, message_id)
             # Handle legacy language pair selection (for backward compatibility)
             elif '|' in data:  # Format: "flag1|flag2"
                 logger.info(f"Handling legacy language selection for chat {chat_id}")
                 self._handle_legacy_language_selection(chat_id, data)
+                # Delete the keyboard message for legacy selection too
+                try:
+                    self.delete_message(chat_id, message_id)
+                except Exception as e:
+                    logger.warning(f"Failed to delete keyboard message {message_id} in chat {chat_id}: {e}")
+                    # Continue with the process even if deletion fails
             else:
                 logger.warning(f"Unknown callback data format for chat {chat_id}: {data}")
                 logger.warning(f"Chat {chat_id} not in language selection state")
@@ -736,7 +705,7 @@ class TelegramBot:
         else:
             return "❌ **New translation failed**"
     
-    def _handle_language_selection(self, chat_id: int, data: str) -> None:
+    def _handle_language_selection(self, chat_id: int, data: str, message_id: int) -> None:
         """Handle two-step language selection process"""
         error_message = self.ERROR_USE_SETPAIR
         invalid_selection_message = self.ERROR_INVALID_SELECTION
@@ -760,9 +729,9 @@ class TelegramBot:
             logger.info(f"Processing language selection for chat {chat_id}: {selected_lang_code} (step: {state['step']})")
             
             if state['step'] == 'first_lang':
-                self._handle_first_language_selection(chat_id, selected_lang_code)
+                self._handle_first_language_selection(chat_id, selected_lang_code, message_id)
             elif state['step'] == 'second_lang':
-                self._handle_second_language_selection(chat_id, selected_lang_code)
+                self._handle_second_language_selection(chat_id, selected_lang_code, message_id)
             else:
                 logger.error(f"Invalid state step for chat {chat_id}: {state['step']}")
                 self.send_message(chat_id, invalid_state_message)
@@ -788,11 +757,18 @@ class TelegramBot:
         logger.info(f"Extracted from button text: {extracted}")
         return extracted
     
-    def _handle_first_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
+    def _handle_first_language_selection(self, chat_id: int, selected_lang_code: str, message_id: int) -> None:
         """Handle first language selection in two-step process"""
         error_message = self.ERROR_USE_SETPAIR
         
         try:
+            # Delete the keyboard message to keep chat clean
+            try:
+                self.delete_message(chat_id, message_id)
+            except Exception as e:
+                logger.warning(f"Failed to delete keyboard message {message_id} in chat {chat_id}: {e}")
+                # Continue with the process even if deletion fails
+            
             # Update state in database
             if not self.db.set_language_selection_state(chat_id, 'second_lang', selected_lang_code):
                 logger.error(f"Failed to update selection state for chat {chat_id}")
@@ -813,12 +789,19 @@ class TelegramBot:
             self.send_message(chat_id, error_message)
             self.db.clear_language_selection_state(chat_id)
     
-    def _handle_second_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
+    def _handle_second_language_selection(self, chat_id: int, selected_lang_code: str, message_id: int) -> None:
         """Handle second language selection in two-step process"""
         error_message = self.ERROR_USE_SETPAIR
         failed_message = self.ERROR_FAILED_SET_PAIR
         
         try:
+            # Delete the keyboard message to keep chat clean
+            try:
+                self.delete_message(chat_id, message_id)
+            except Exception as e:
+                logger.warning(f"Failed to delete keyboard message {message_id} in chat {chat_id}: {e}")
+                # Continue with the process even if deletion fails
+            
             # Get current state from database
             state = self.db.get_language_selection_state(chat_id)
             if not state or not state.get('first_lang'):
