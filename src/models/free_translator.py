@@ -271,4 +271,51 @@ class FreeTranslator:
                            f"correcting to {script_code}")
                 return script_code
         
-        return mapped_code 
+        # Special handling for Hebrew detection
+        if mapped_code == 'hi' and self._contains_hebrew_characters(text):
+            logger.info(f"✅ Hebrew text incorrectly detected as Hindi, correcting to Hebrew")
+            return 'he'
+        
+        # Check for romanized Hebrew words
+        if self._contains_hebrew_words(text) and confidence < 0.7:
+            logger.info(f"✅ Detected Hebrew words in romanized text, correcting to Hebrew")
+            return 'he'
+        
+        return mapped_code
+    
+    def _contains_hebrew_characters(self, text: str) -> bool:
+        """Check if text contains Hebrew characters"""
+        # Hebrew Unicode range: U+0590 to U+05FF
+        hebrew_range = range(0x0590, 0x0600)
+        
+        for char in text:
+            if ord(char) in hebrew_range:
+                return True
+        return False
+    
+    def _contains_hebrew_words(self, text: str) -> bool:
+        """Check if text contains common Hebrew words (romanized)"""
+        # Common Hebrew words and phrases in Latin script
+        hebrew_words = {
+            'shalom', 'mashlomcha', 'toda', 'boker', 'tov', 'erev', 'tov', 'yom', 'tov',
+            'chag', 'sameach', 'mazel', 'tov', 'baruch', 'hashem', 'adonai', 'elohim',
+            'shabbat', 'shalom', 'aleichem', 'shavua', 'tov', 'kol', 'tuv', 'beseder',
+            'ken', 'lo', 'ani', 'ata', 'at', 'hu', 'hi', 'hem', 'hen', 'zeh', 'zot',
+            'ele', 'elu', 'ma', 'eich', 'lamah', 'eifo', 'matai', 'kama', 'kama',
+            'echad', 'shtayim', 'shalosh', 'arba', 'chamesh', 'shesh', 'sheva', 'shmone',
+            'tesha', 'eser', 'ahava', 'simcha', 'tzedaka', 'tikkun', 'olam', 'tzedek',
+            'shalom', 'shavua', 'tov', 'kol', 'tuv', 'beseder', 'ken', 'lo', 'ani',
+            'ata', 'at', 'hu', 'hi', 'hem', 'hen', 'zeh', 'zot', 'ele', 'elu'
+        }
+        
+        # Convert text to lowercase and split into words
+        words = text.lower().split()
+        
+        # Check if any Hebrew words are present
+        for word in words:
+            # Remove punctuation
+            clean_word = ''.join(c for c in word if c.isalnum())
+            if clean_word in hebrew_words:
+                return True
+        
+        return False
