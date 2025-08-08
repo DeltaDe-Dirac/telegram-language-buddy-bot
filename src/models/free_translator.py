@@ -288,29 +288,3 @@ class FreeTranslator:
                 return True
         return False
     
-    def _contains_hebrew_words(self, text: str) -> bool:
-        """Check if text contains common Hebrew words (romanized)"""
-        # Common Hebrew words and phrases in Latin script
-        hebrew_words = {
-            'shalom', 'mashlomcha', 'toda', 'boker', 'tov', 'erev', 'tov', 'yom', 'tov',
-            'chag', 'sameach', 'mazel', 'tov', 'baruch', 'hashem', 'adonai', 'elohim',
-            'shabbat', 'shalom', 'aleichem', 'shavua', 'tov', 'kol', 'tuv', 'beseder',
-            'ken', 'lo', 'ani', 'ata', 'at', 'hu', 'hi', 'hem', 'hen', 'zeh', 'zot',
-            'ele', 'elu', 'ma', 'eich', 'lamah', 'eifo', 'matai', 'kama', 'kama',
-            'echad', 'shtayim', 'shalosh', 'arba', 'chamesh', 'shesh', 'sheva', 'shmone',
-            'tesha', 'eser', 'ahava', 'simcha', 'tzedaka', 'tikkun', 'olam', 'tzedek',
-            'shalom', 'shavua', 'tov', 'kol', 'tuv', 'beseder', 'ken', 'lo', 'ani',
-            'ata', 'at', 'hu', 'hi', 'hem', 'hen', 'zeh', 'zot', 'ele', 'elu'
-        }
-        
-        # Convert text to lowercase and split into words
-        words = text.lower().split()
-        
-        # Check if any Hebrew words are present
-        for word in words:
-            # Remove punctuation
-            clean_word = ''.join(c for c in word if c.isalnum())
-            if clean_word in hebrew_words:
-                return True
-        
-        return False
