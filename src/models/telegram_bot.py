@@ -628,6 +628,7 @@ class TelegramBot:
         """Handle bot commands"""
         cmd_parts = command.split()
         cmd = cmd_parts[0].lower()
+        cmd = cmd.split('@')[0]  # removes @MyLangBuddy_bot if present
         
         if cmd == '/start':
             welcome_text = """
