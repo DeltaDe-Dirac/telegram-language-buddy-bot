@@ -277,7 +277,7 @@ class FreeTranslator:
             return 'he'
         
         # Check for romanized Hebrew words
-        if self._contains_hebrew_words(text) and confidence < 0.7:
+        if self._contains_hebrew_words(text) and confidence < 0.8:
             logger.info(f"✅ Detected Hebrew words in romanized text, correcting to Hebrew")
             return 'he'
         
@@ -305,7 +305,8 @@ class FreeTranslator:
             'echad', 'shtayim', 'shalosh', 'arba', 'chamesh', 'shesh', 'sheva', 'shmone',
             'tesha', 'eser', 'ahava', 'simcha', 'tzedaka', 'tikkun', 'olam', 'tzedek',
             'shalom', 'shavua', 'tov', 'kol', 'tuv', 'beseder', 'ken', 'lo', 'ani',
-            'ata', 'at', 'hu', 'hi', 'hem', 'hen', 'zeh', 'zot', 'ele', 'elu'
+            'ata', 'at', 'hu', 'hi', 'hem', 'hen', 'zeh', 'zot', 'ele', 'elu',
+            'havel', 'muslim', 'kha', 'kha', 'kha', 'kha', 'kha', 'kha', 'kha', 'kha'
         }
         
         # Convert text to lowercase and split into words
