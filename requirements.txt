@@ -7,3 +7,5 @@ SQLAlchemy==2.0.23
 psycopg2-binary==2.9.9
 pytest==8.4.1
 pytest-cov==6.2.1
+assemblyai==0.21.0
+google-cloud-speech==2.21.0
