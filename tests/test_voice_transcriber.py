@@ -86,7 +86,7 @@ class TestVoiceTranscriber:
         
         with patch('tempfile.NamedTemporaryFile') as mock_temp:
             mock_temp.return_value.__enter__.return_value.name = '/tmp/test.ogg'
-            result = transcriber._transcribe_with_assemblyai('/tmp/test.ogg')
+            result = transcriber._transcribe_with_assemblyai_hinted('/tmp/test.ogg', language_hint='en')
         
         assert result == "Hello world"
     
@@ -101,7 +101,7 @@ class TestVoiceTranscriber:
         
         with patch('tempfile.NamedTemporaryFile') as mock_temp:
             mock_temp.return_value.__enter__.return_value.name = '/tmp/test.ogg'
-            result = transcriber._transcribe_with_assemblyai('/tmp/test.ogg')
+            result = transcriber._transcribe_with_assemblyai_hinted('/tmp/test.ogg', language_hint='en')
         
         assert result is None
     
@@ -120,7 +120,7 @@ class TestVoiceTranscriber:
         transcriber = VoiceTranscriber()
         
         with patch('builtins.open', mock_open(read_data=b'fake_audio')):
-            result = transcriber._transcribe_with_google_speech('/tmp/test.ogg')
+            result = transcriber._transcribe_with_google_speech_hinted('/tmp/test.ogg', language_hint='en')
         
         assert result == "Hello world"
     
@@ -134,12 +134,12 @@ class TestVoiceTranscriber:
         transcriber = VoiceTranscriber()
         
         with patch('builtins.open', mock_open(read_data=b'fake_audio')):
-            result = transcriber._transcribe_with_google_speech('/tmp/test.ogg')
+            result = transcriber._transcribe_with_google_speech_hinted('/tmp/test.ogg', language_hint='en')
         
         assert result is None
     
     @patch('src.models.voice_transcriber.VoiceTranscriber._download_voice_file')
-    @patch('src.models.voice_transcriber.VoiceTranscriber._transcribe_with_assemblyai')
+    @patch('src.models.voice_transcriber.VoiceTranscriber._transcribe_with_assemblyai_hinted')
     def test_transcribe_voice_message_success(self, mock_transcribe, mock_download):
         """Test successful voice message transcription"""
         mock_download.return_value = b'fake_audio_data'

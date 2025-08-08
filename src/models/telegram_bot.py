@@ -495,6 +495,9 @@ class TelegramBot:
         user_name = message['from'].get('first_name', 'User')
         response = self._build_edit_response_header(user_name, text, previous_translation)
         
+        # Get user language pair
+        lang1, lang2 = self.get_user_language_pair(chat_id)
+        
         # Get new translation
         target_lang = self._get_target_language_for_edit(chat_id, text)
         if not target_lang:
