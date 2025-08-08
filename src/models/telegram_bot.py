@@ -362,78 +362,19 @@ class TelegramBot:
             self.send_message(chat_id, error_msg)
     
     def _transcribe_with_fallback(self, file_id: str) -> Optional[Tuple[str, Optional[str]]]:
-        """Transcribe voice message with intelligent fallback strategy following the Python example pattern"""
+        """Transcribe voice message with confidence-based fallback strategy"""
         try:
-            # Download the voice file
-            audio_data = self.voice_transcriber._download_voice_file(file_id)
-            if not audio_data:
-                logger.error("Failed to download voice file")
-                return None
+            # Use the new confidence-based transcription system
+            result = self.voice_transcriber.transcribe_voice_message_with_confidence(file_id, confidence_threshold=0.7)
             
-            logger.info(f"Downloaded voice file, size: {len(audio_data)} bytes")
-            
-            # Save to temporary file for services that need file paths
-            temp_audio_path = self.voice_transcriber._save_audio_to_temp_file(audio_data)
-            if not temp_audio_path:
-                logger.error("Failed to save audio to temp file")
-                return None
-            
-            try:
-                transcript = None
-                detected_lang = None
-                
-                # Step 1: Try Whisper API first (best for Hebrew and many languages)
-                if self.voice_transcriber.services_available.get('whisper', False):
-                    logger.info("[INFO] Trying Whisper API transcription first...")
-                    try:
-                        transcript = self.voice_transcriber.whisper_transcriber.transcribe_audio(temp_audio_path)
-                        if transcript:
-                            logger.info("[SUCCESS] Whisper transcription successful")
-                            # Try to detect language from the transcript
-                            detected_lang = self.translator.detect_language(transcript)
-                            return transcript, detected_lang
-                    except Exception as e:
-                        logger.warning(f"[WARN] Whisper failed: {e}")
-                        logger.info("[INFO] Falling back to AssemblyAI...")
-                
-                # Step 2: Try AssemblyAI (good fallback)
-                if self.voice_transcriber.services_available.get('assemblyai', False):
-                    logger.info("[INFO] Trying AssemblyAI transcription...")
-                    try:
-                        transcript = self.voice_transcriber._transcribe_with_assemblyai(temp_audio_path)
-                        if transcript:
-                            logger.info("[SUCCESS] AssemblyAI transcription successful")
-                            # Try to detect language from the transcript
-                            detected_lang = self.translator.detect_language(transcript)
-                            return transcript, detected_lang
-                    except Exception as e:
-                        logger.warning(f"[WARN] AssemblyAI failed: {e}")
-                        logger.info("[INFO] Falling back to Google Speech-to-Text...")
-                
-                # Step 3: Try Google Speech-to-Text (final fallback)
-                if self.voice_transcriber.services_available.get('google_speech', False):
-                    logger.info("[INFO] Trying Google Speech-to-Text as final fallback...")
-                    try:
-                        transcript = self._transcribe_with_google_speech(temp_audio_path, None)  # None for auto-detection
-                        if transcript:
-                            logger.info("[SUCCESS] Google transcription successful")
-                            # Try to detect language from the transcript
-                            detected_lang = self.translator.detect_language(transcript)
-                            return transcript, detected_lang
-                    except (GoogleAPICallError, ResourceExhausted) as e:
-                        logger.warning(f"[WARN] Google API failed: {e}")
-                    except Exception as e:
-                        logger.warning(f"[WARN] Google Speech unexpected error: {e}")
-                
+            if result:
+                logger.info(f"[SUCCESS] Transcription completed using {result.service} with confidence {result.confidence:.3f}")
+                # Try to detect language from the transcript
+                detected_lang = self.translator.detect_language(result.text)
+                return result.text, detected_lang
+            else:
                 logger.error("[FATAL] All transcription services failed")
                 return None
-                
-            finally:
-                # Clean up temporary file
-                try:
-                    os.unlink(temp_audio_path)
-                except (OSError, ImportError, AttributeError, ValueError) as e:
-                    logger.warning(f"Failed to clean up temp file: {e}")
                     
         except Exception as e:
             logger.error(f"Error in transcription fallback: {e}")

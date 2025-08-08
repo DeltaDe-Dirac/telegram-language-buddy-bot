@@ -79,6 +79,7 @@ class TestVoiceTranscriber:
         # Mock AssemblyAI response
         mock_transcript = Mock()
         mock_transcript.text = "Hello world"
+        mock_transcript.words = []  # Empty words list for confidence calculation
         mock_aai.Transcriber.return_value.transcribe.return_value = mock_transcript
         
         os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
@@ -88,7 +89,10 @@ class TestVoiceTranscriber:
             mock_temp.return_value.__enter__.return_value.name = '/tmp/test.ogg'
             result = transcriber._transcribe_with_assemblyai('/tmp/test.ogg')
         
-        assert result == "Hello world"
+        assert result is not None
+        assert result.text == "Hello world"
+        assert result.service == "assemblyai"
+        assert 0.0 <= result.confidence <= 1.0
     
     @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
     @patch('src.models.voice_transcriber.aai')
@@ -114,8 +118,12 @@ class TestVoiceTranscriber:
         mock_credentials.return_value = Mock()
         
         # Mock Google Speech response
+        mock_alternative = Mock()
+        mock_alternative.transcript = "Hello world"
+        mock_alternative.confidence = 0.9  # Add confidence score
+        
         mock_result = Mock()
-        mock_result.alternatives = [Mock(transcript="Hello world")]
+        mock_result.alternatives = [mock_alternative]
         mock_response = Mock()
         mock_response.results = [mock_result]
         mock_speech.SpeechClient.return_value.recognize.return_value = mock_response
@@ -126,7 +134,10 @@ class TestVoiceTranscriber:
         with patch('builtins.open', mock_open(read_data=b'fake_audio')):
             result = transcriber._transcribe_with_google_speech('/tmp/test.ogg')
         
-        assert result == "Hello world"
+        assert result is not None
+        assert result.text == "Hello world"
+        assert result.service == "google_speech"
+        assert 0.0 <= result.confidence <= 1.0
     
     @patch('src.models.voice_transcriber.GOOGLE_SPEECH_AVAILABLE', True)
     @patch('src.models.voice_transcriber.speech')
@@ -150,8 +161,14 @@ class TestVoiceTranscriber:
     @patch('src.models.voice_transcriber.VoiceTranscriber._transcribe_with_assemblyai')
     def test_transcribe_voice_message_success(self, mock_transcribe, mock_download):
         """Test successful voice message transcription"""
+        from src.models.transcription_result import TranscriptionResult
+        
         mock_download.return_value = b'fake_audio_data'
-        mock_transcribe.return_value = "Hello world"
+        mock_transcribe.return_value = TranscriptionResult(
+            text="Hello world",
+            service="assemblyai",
+            confidence=0.8
+        )
         
         os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
         transcriber = VoiceTranscriber()
