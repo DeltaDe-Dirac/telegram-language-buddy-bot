@@ -571,6 +571,7 @@ class TelegramBot:
         """Handle inline keyboard callback"""
         try:
             chat_id = callback_query['message']['chat']['id']
+            message_id = callback_query['message']['message_id']
             data = callback_query['data']
             callback_query_id = callback_query['id']
             
@@ -583,11 +584,17 @@ class TelegramBot:
             state = self.db.get_language_selection_state(chat_id)
             if state:
                 logger.info(f"Found language selection state for chat {chat_id}: {state}")
-                self._handle_language_selection(chat_id, data)
+                self._handle_language_selection(chat_id, data, message_id)
             # Handle legacy language pair selection (for backward compatibility)
             elif '|' in data:  # Format: "flag1|flag2"
                 logger.info(f"Handling legacy language selection for chat {chat_id}")
                 self._handle_legacy_language_selection(chat_id, data)
+                # Delete the keyboard message for legacy selection too
+                try:
+                    self.delete_message(chat_id, message_id)
+                except Exception as e:
+                    logger.warning(f"Failed to delete keyboard message {message_id} in chat {chat_id}: {e}")
+                    # Continue with the process even if deletion fails
             else:
                 logger.warning(f"Unknown callback data format for chat {chat_id}: {data}")
                 logger.warning(f"Chat {chat_id} not in language selection state")
@@ -698,7 +705,7 @@ class TelegramBot:
         else:
             return "❌ **New translation failed**"
     
-    def _handle_language_selection(self, chat_id: int, data: str) -> None:
+    def _handle_language_selection(self, chat_id: int, data: str, message_id: int) -> None:
         """Handle two-step language selection process"""
         error_message = self.ERROR_USE_SETPAIR
         invalid_selection_message = self.ERROR_INVALID_SELECTION
@@ -722,9 +729,9 @@ class TelegramBot:
             logger.info(f"Processing language selection for chat {chat_id}: {selected_lang_code} (step: {state['step']})")
             
             if state['step'] == 'first_lang':
-                self._handle_first_language_selection(chat_id, selected_lang_code)
+                self._handle_first_language_selection(chat_id, selected_lang_code, message_id)
             elif state['step'] == 'second_lang':
-                self._handle_second_language_selection(chat_id, selected_lang_code)
+                self._handle_second_language_selection(chat_id, selected_lang_code, message_id)
             else:
                 logger.error(f"Invalid state step for chat {chat_id}: {state['step']}")
                 self.send_message(chat_id, invalid_state_message)
@@ -750,11 +757,18 @@ class TelegramBot:
         logger.info(f"Extracted from button text: {extracted}")
         return extracted
     
-    def _handle_first_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
+    def _handle_first_language_selection(self, chat_id: int, selected_lang_code: str, message_id: int) -> None:
         """Handle first language selection in two-step process"""
         error_message = self.ERROR_USE_SETPAIR
         
         try:
+            # Delete the keyboard message to keep chat clean
+            try:
+                self.delete_message(chat_id, message_id)
+            except Exception as e:
+                logger.warning(f"Failed to delete keyboard message {message_id} in chat {chat_id}: {e}")
+                # Continue with the process even if deletion fails
+            
             # Update state in database
             if not self.db.set_language_selection_state(chat_id, 'second_lang', selected_lang_code):
                 logger.error(f"Failed to update selection state for chat {chat_id}")
@@ -775,12 +789,19 @@ class TelegramBot:
             self.send_message(chat_id, error_message)
             self.db.clear_language_selection_state(chat_id)
     
-    def _handle_second_language_selection(self, chat_id: int, selected_lang_code: str) -> None:
+    def _handle_second_language_selection(self, chat_id: int, selected_lang_code: str, message_id: int) -> None:
         """Handle second language selection in two-step process"""
         error_message = self.ERROR_USE_SETPAIR
         failed_message = self.ERROR_FAILED_SET_PAIR
         
         try:
+            # Delete the keyboard message to keep chat clean
+            try:
+                self.delete_message(chat_id, message_id)
+            except Exception as e:
+                logger.warning(f"Failed to delete keyboard message {message_id} in chat {chat_id}: {e}")
+                # Continue with the process even if deletion fails
+            
             # Get current state from database
             state = self.db.get_language_selection_state(chat_id)
             if not state or not state.get('first_lang'):
