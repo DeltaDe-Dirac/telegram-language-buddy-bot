@@ -7,22 +7,34 @@ from typing import Optional, Dict, List
 from urllib.parse import urlparse
 import json
 
+# Import new transcription services
+try:
+    import assemblyai as aai
+    ASSEMBLYAI_AVAILABLE = True
+except ImportError:
+    ASSEMBLYAI_AVAILABLE = False
+
+try:
+    from google.cloud import speech
+    from google.api_core.exceptions import GoogleAPICallError, ResourceExhausted
+    GOOGLE_SPEECH_AVAILABLE = True
+except ImportError:
+    GOOGLE_SPEECH_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 class VoiceTranscriber:
-    """Voice transcription service with multiple free model fallbacks"""
+    """Voice transcription service with AssemblyAI and Google Speech-to-Text as primary services"""
     
     def __init__(self):
         self.rate_limits = {
-            'whisper_api': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
-            'huggingface': {'last_request': 0, 'min_interval': 2},  # 2 seconds between requests
-            'openai_whisper': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
+            'assemblyai': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
+            'google_speech': {'last_request': 0, 'min_interval': 1},  # 1 second between requests
         }
         
         # API keys and endpoints
-        self.whisper_api_key = os.getenv('WHISPER_API_KEY')
-        self.huggingface_token = os.getenv('HUGGINGFACE_TOKEN')
-        self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        self.assemblyai_api_key = os.getenv('ASSEMBLYAI_API_KEY')
+        self.google_credentials = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         
         # Service availability flags
         self.services_available = self._check_service_availability()
@@ -30,9 +42,8 @@ class VoiceTranscriber:
     def _check_service_availability(self) -> Dict[str, bool]:
         """Check which transcription services are available"""
         services = {
-            'whisper_api': bool(self.whisper_api_key),
-            'huggingface': bool(self.huggingface_token),
-            'openai_whisper': bool(self.openai_api_key),
+            'assemblyai': bool(self.assemblyai_api_key and ASSEMBLYAI_AVAILABLE),
+            'google_speech': bool(self.google_credentials and GOOGLE_SPEECH_AVAILABLE),
         }
         
         # Log service availability for debugging
@@ -54,7 +65,7 @@ class VoiceTranscriber:
             
             self.rate_limits[service]['last_request'] = time.time()
     
-    def _download_voice_file(self, file_path: str) -> Optional[bytes]:
+    def _download_voice_file(self, file_id: str) -> Optional[bytes]:
         """Download voice file from Telegram"""
         try:
             # Get file info from Telegram
@@ -65,7 +76,7 @@ class VoiceTranscriber:
             
             # Get file info
             file_info_url = f"https://api.telegram.org/bot{token}/getFile"
-            file_info_response = requests.post(file_info_url, json={'file_id': file_path}, timeout=10)
+            file_info_response = requests.post(file_info_url, json={'file_id': file_id}, timeout=10)
             
             if file_info_response.status_code != 200:
                 logger.error(f"Failed to get file info: {file_info_response.text}")
@@ -90,129 +101,157 @@ class VoiceTranscriber:
             logger.error(f"Error downloading voice file: {e}")
             return None
     
-    def _transcribe_with_whisper_api(self, audio_data: bytes) -> Optional[str]:
-        """Transcribe using Whisper API (free tier)"""
+    def _save_audio_to_temp_file(self, audio_data: bytes) -> Optional[str]:
+        """Save audio data to temporary file"""
         try:
-            self._respect_rate_limit('whisper_api')
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as temp_file:
+                temp_file.write(audio_data)
+                temp_file_path = temp_file.name
+            return temp_file_path
+        except Exception as e:
+            logger.error(f"Error saving audio to temp file: {e}")
+            return None
+    
+    def _detect_language_assemblyai(self, audio_path: str) -> Optional[str]:
+        """Quickly detect spoken language using AssemblyAI"""
+        try:
+            self._respect_rate_limit('assemblyai')
             
-            url = "https://api.openai.com/v1/audio/transcriptions"
-            headers = {
-                "Authorization": f"Bearer {self.whisper_api_key}"
-            }
+            aai.settings.api_key = self.assemblyai_api_key
+            transcriber = aai.Transcriber()
             
-            files = {
-                'file': ('audio.ogg', audio_data, 'audio/ogg'),
-                'model': (None, 'whisper-1'),
-                'language': (None, 'auto')
-            }
+            transcript = transcriber.transcribe(
+                audio_path,
+                config=aai.TranscriptionConfig(language_detection=True)
+            )
             
-            response = requests.post(url, headers=headers, files=files, timeout=30)
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result.get('text', '').strip()
+            if transcript.language_code:
+                logger.info(f"[INFO] AssemblyAI detected language: {transcript.language_code}")
+                return transcript.language_code
             else:
-                logger.warning(f"Whisper API failed: {response.status_code} - {response.text}")
+                logger.warning("[WARN] AssemblyAI language detection failed")
                 return None
                 
         except Exception as e:
-            logger.error(f"Error with Whisper API: {e}")
+            logger.error(f"[ERROR] AssemblyAI language detection failed: {e}")
             return None
     
-    def _transcribe_with_huggingface(self, audio_data: bytes) -> Optional[str]:
-        """Transcribe using Hugging Face free models"""
+    def _transcribe_with_assemblyai(self, audio_path: str) -> Optional[str]:
+        """Full transcription with AssemblyAI (auto language detection)"""
         try:
-            self._respect_rate_limit('huggingface')
+            self._respect_rate_limit('assemblyai')
             
-            # Use a free Whisper model on Hugging Face
-            url = "https://api-inference.huggingface.co/models/openai/whisper-tiny"
-            headers = {
-                "Authorization": f"Bearer {self.huggingface_token}"
-            }
+            aai.settings.api_key = self.assemblyai_api_key
+            transcriber = aai.Transcriber()
             
-            response = requests.post(url, headers=headers, data=audio_data, timeout=60)
+            transcript = transcriber.transcribe(
+                audio_path,
+                config=aai.TranscriptionConfig(language_detection=True)
+            )
             
-            if response.status_code == 200:
-                result = response.json()
-                if isinstance(result, dict) and 'text' in result:
-                    return result['text'].strip()
-                elif isinstance(result, list) and len(result) > 0:
-                    return result[0].get('text', '').strip()
+            if transcript.text:
+                logger.info(f"[SUCCESS] AssemblyAI transcription: '{transcript.text[:50]}...'")
+                return transcript.text.strip()
             else:
-                logger.warning(f"Hugging Face API failed: {response.status_code} - {response.text}")
+                logger.warning("[WARN] AssemblyAI returned empty transcription")
                 return None
                 
         except Exception as e:
-            logger.error(f"Error with Hugging Face API: {e}")
+            logger.error(f"[ERROR] AssemblyAI transcription failed: {e}")
             return None
     
-    def _transcribe_with_openai_whisper(self, audio_data: bytes) -> Optional[str]:
-        """Transcribe using OpenAI Whisper (alternative endpoint)"""
+    def _transcribe_with_google_speech(self, audio_path: str, language_code: str = None) -> Optional[str]:
+        """Full transcription using Google Speech-to-Text"""
         try:
-            self._respect_rate_limit('openai_whisper')
+            self._respect_rate_limit('google_speech')
             
-            # Try alternative Whisper endpoint
-            url = "https://api.openai.com/v1/audio/transcriptions"
-            headers = {
-                "Authorization": f"Bearer {self.openai_api_key}"
-            }
+            client = speech.SpeechClient()
             
-            files = {
-                'file': ('audio.ogg', audio_data, 'audio/ogg'),
-                'model': (None, 'whisper-1'),
-                'response_format': (None, 'text')
-            }
+            with open(audio_path, "rb") as f:
+                content = f.read()
             
-            response = requests.post(url, headers=headers, files=files, timeout=30)
+            audio = speech.RecognitionAudio(content=content)
             
-            if response.status_code == 200:
-                return response.text.strip()
+            # Use detected language or auto-detect
+            config_language = language_code if language_code else "en-US"
+            
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+                sample_rate_hertz=48000,  # Telegram voice messages are typically 48kHz
+                language_code=config_language,
+                enable_automatic_punctuation=True
+            )
+            
+            response = client.recognize(config=config, audio=audio)
+            
+            if response.results:
+                transcript = " ".join([result.alternatives[0].transcript for result in response.results])
+                logger.info(f"[SUCCESS] Google Speech transcription: '{transcript[:50]}...'")
+                return transcript.strip()
             else:
-                logger.warning(f"OpenAI Whisper failed: {response.status_code} - {response.text}")
+                logger.warning("[WARN] Google Speech returned empty transcription")
                 return None
                 
+        except (GoogleAPICallError, ResourceExhausted) as e:
+            logger.error(f"[ERROR] Google Speech API failed: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Error with OpenAI Whisper: {e}")
+            logger.error(f"[ERROR] Google Speech unexpected error: {e}")
             return None
     
-    def transcribe_voice_message(self, file_path: str) -> Optional[str]:
-        """Transcribe voice message with fallback to multiple services"""
-        logger.info(f"Starting voice transcription for file: {file_path}")
+    def transcribe_voice_message(self, file_id: str) -> Optional[str]:
+        """Transcribe voice message with intelligent fallback strategy"""
+        logger.info(f"Starting voice transcription for file: {file_id}")
         
         # Download the voice file
-        audio_data = self._download_voice_file(file_path)
+        audio_data = self._download_voice_file(file_id)
         if not audio_data:
             logger.error("Failed to download voice file")
             return None
         
         logger.info(f"Downloaded voice file, size: {len(audio_data)} bytes")
         
-        # Try each transcription service in order
-        transcription_services = [
-            ('whisper_api', self._transcribe_with_whisper_api),
-            ('huggingface', self._transcribe_with_huggingface),
-            ('openai_whisper', self._transcribe_with_openai_whisper),
-        ]
+        # Save to temporary file for services that need file paths
+        temp_audio_path = self._save_audio_to_temp_file(audio_data)
+        if not temp_audio_path:
+            logger.error("Failed to save audio to temp file")
+            return None
         
-        for service_name, service_func in transcription_services:
-            if not self.services_available.get(service_name, False):
-                logger.info(f"Service {service_name} not available, skipping")
-                continue
+        try:
+            transcript = None
             
-            logger.info(f"Trying transcription with {service_name}")
+            # Step 1: Try AssemblyAI (primary service)
+            if self.services_available.get('assemblyai', False):
+                logger.info("[INFO] Trying AssemblyAI transcription...")
+                transcript = self._transcribe_with_assemblyai(temp_audio_path)
+                if transcript:
+                    return transcript
+            
+            # Step 2: Try Google Speech-to-Text with language detection
+            if self.services_available.get('google_speech', False):
+                logger.info("[INFO] Trying Google Speech-to-Text...")
+                
+                # First detect language with AssemblyAI if available
+                detected_language = None
+                if self.services_available.get('assemblyai', False):
+                    detected_language = self._detect_language_assemblyai(temp_audio_path)
+                
+                try:
+                    transcript = self._transcribe_with_google_speech(temp_audio_path, detected_language)
+                    if transcript:
+                        return transcript
+                except Exception as e:
+                    logger.warning(f"[WARN] Google Speech-to-Text failed: {e}")
+            
+            logger.error("[FATAL] All transcription services failed")
+            return None
+            
+        finally:
+            # Clean up temporary file
             try:
-                transcription = service_func(audio_data)
-                if transcription:
-                    logger.info(f"Successfully transcribed with {service_name}: '{transcription[:50]}...'")
-                    return transcription
-                else:
-                    logger.warning(f"Service {service_name} returned empty transcription")
+                os.unlink(temp_audio_path)
             except Exception as e:
-                logger.error(f"Error with {service_name}: {e}")
-                continue
-        
-        logger.error("All transcription services failed")
-        return None
+                logger.warning(f"Failed to clean up temp file: {e}")
     
     def get_service_status(self) -> Dict[str, Dict]:
         """Get status of all transcription services"""
@@ -224,5 +263,6 @@ class VoiceTranscriber:
                     'min_interval': info['min_interval']
                 }
                 for service, info in self.rate_limits.items()
-            }
+            },
+            'primary_services': ['assemblyai', 'google_speech']
         }

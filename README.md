@@ -50,12 +50,11 @@ A smart translation bot that provides instant language conversion using Google T
    set PORT=5000
    ```
    
-   **Optional**: For voice message transcription, add API keys:
-   ```cmd
-   set WHISPER_API_KEY=your_openai_whisper_api_key_here
-   set HUGGINGFACE_TOKEN=your_huggingface_token_here
-   set OPENAI_API_KEY=your_openai_api_key_here
-   ```
+       **Optional**: For voice message transcription, add API keys:
+    ```cmd
+    set ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
+    set GOOGLE_APPLICATION_CREDENTIALS=path/to/your/google-credentials.json
+    ```
 
 5. **Run the bot**
    ```cmd
@@ -90,12 +89,11 @@ A smart translation bot that provides instant language conversion using Google T
    export PORT=5000
    ```
    
-   **Optional**: For voice message transcription, add API keys:
-   ```bash
-   export WHISPER_API_KEY=your_openai_whisper_api_key_here
-   export HUGGINGFACE_TOKEN=your_huggingface_token_here
-   export OPENAI_API_KEY=your_openai_api_key_here
-   ```
+       **Optional**: For voice message transcription, add API keys:
+    ```bash
+    export ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
+    export GOOGLE_APPLICATION_CREDENTIALS=path/to/your/google-credentials.json
+    ```
 
 5. **Run the bot**
    ```bash
@@ -116,9 +114,8 @@ DATABASE_URL=sqlite:///bot_data.db
 PORT=5000
 
 # Optional: Voice transcription API keys
-WHISPER_API_KEY=your_openai_whisper_api_key_here
-HUGGINGFACE_TOKEN=your_huggingface_token_here
-OPENAI_API_KEY=your_openai_api_key_here
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
+GOOGLE_APPLICATION_CREDENTIALS=path/to/your/google-credentials.json
 ```
 
 Or set them directly in your shell:
@@ -144,9 +141,8 @@ export PORT=5000
 - `PORT` - Server port (auto-configured by Heroku)
 
 **Optional Voice Transcription API Keys:**
-- `WHISPER_API_KEY` - OpenAI Whisper API key for voice transcription
-- `HUGGINGFACE_TOKEN` - Hugging Face inference API token for voice transcription
-- `OPENAI_API_KEY` - OpenAI API key for alternative voice transcription
+- `ASSEMBLYAI_API_KEY` - AssemblyAI API key for voice transcription (recommended)
+- `GOOGLE_APPLICATION_CREDENTIALS` - Google Cloud credentials for Speech-to-Text
 
 ## 🔧 Database
 
@@ -204,23 +200,17 @@ The bot now supports voice message transcription and translation! Simply send a 
 
 ### Supported Voice Transcription Services
 
-1. **OpenAI Whisper API** (Primary) - High accuracy, free tier available
-2. **Hugging Face Inference API** (Fallback) - Free community models
-3. **OpenAI API** (Alternative) - Backup Whisper endpoint
+1. **AssemblyAI** (Primary) - High accuracy, excellent language detection
+2. **Google Speech-to-Text** (Primary) - Enterprise-grade transcription
 
 ### Setting Up Voice Transcription
 
 To enable voice transcription, add one or more API keys to your environment:
 
 ```env
-# Primary service (recommended)
-WHISPER_API_KEY=your_openai_whisper_api_key
-
-# Fallback service
-HUGGINGFACE_TOKEN=your_huggingface_token
-
-# Alternative service
-OPENAI_API_KEY=your_openai_api_key
+# Primary services (recommended)
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key
+GOOGLE_APPLICATION_CREDENTIALS=path/to/your/google-credentials.json
 ```
 
 **Note**: Voice transcription works even without API keys, but will show an error message when users send voice messages.

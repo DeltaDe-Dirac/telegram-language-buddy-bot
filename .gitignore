@@ -208,3 +208,10 @@ __marimo__/
 
 # Bot data files (local development only)
 bot_data.db
+
+# Google Cloud credentials (keep secure!)
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!jsconfig.json

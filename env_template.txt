@@ -12,14 +12,16 @@ FLASK_ENV=development
 PORT=5000
 
 # Voice Transcription API Keys (Optional - for voice message feature)
-# Primary service (recommended)
-WHISPER_API_KEY=your_openai_whisper_api_key_here
+# Primary services (recommended)
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
+GOOGLE_APPLICATION_CREDENTIALS=path/to/your/google-credentials.json
 
-# Fallback service
-HUGGINGFACE_TOKEN=your_huggingface_token_here
 
-# Alternative service
-OPENAI_API_KEY=your_openai_api_key_here
 
 # Note: Voice transcription works without these API keys, but will show an error 
 # message when users send voice messages. Add at least one key to enable the feature.
+# 
+# Recommended setup:
+# 1. Get AssemblyAI API key (free tier available) - https://www.assemblyai.com/
+# 2. Or set up Google Cloud Speech-to-Text - https://cloud.google.com/speech-to-text
+# 3. Fallback services will be used if primary services fail
