@@ -89,6 +89,12 @@ class FreeTranslator:
             
             # Convert to our supported code if mapping exists
             mapped_code = code_mapping.get(detected_code, detected_code)
+            
+            # Special handling for Hebrew detection
+            if detected_code == 'hi' and self._contains_hebrew_characters(text):
+                mapped_code = 'he'
+                logger.info(f"✅ Hebrew text incorrectly detected as Hindi, corrected to Hebrew")
+            
             logger.info(f"googletrans detected '{detected_code}', mapped to '{mapped_code}'")
             
             if detected_code != mapped_code:
@@ -99,4 +105,14 @@ class FreeTranslator:
             return mapped_code
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Language detection failed: {e}")
-            return 'unknown' 
+            return 'unknown'
+    
+    def _contains_hebrew_characters(self, text: str) -> bool:
+        """Check if text contains Hebrew characters"""
+        # Hebrew Unicode range: U+0590 to U+05FF
+        hebrew_range = range(0x0590, 0x0600)
+        
+        for char in text:
+            if ord(char) in hebrew_range:
+                return True
+        return False 
