@@ -251,7 +251,7 @@ class TelegramBot:
         
         # Handle voice messages first
         if 'voice' in message:
-            self._handle_voice_message(message, chat_id, user_id, user_name)
+            # self._handle_voice_message(message, chat_id, user_id, user_name)
             return
         
         # Handle text messages
