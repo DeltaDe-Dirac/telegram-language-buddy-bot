@@ -11,7 +11,7 @@ class TestVoiceTranscriber:
         """Set up test environment"""
         # Clear environment variables for testing
         self.original_env = {}
-        for key in ['ASSEMBLYAI_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS']:
+        for key in ['ASSEMBLYAI_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS', 'TELEGRAM_BOT_TOKEN']:
             if key in os.environ:
                 self.original_env[key] = os.environ[key]
                 del os.environ[key]
@@ -53,6 +53,9 @@ class TestVoiceTranscriber:
         mock_get.return_value.status_code = 200
         mock_get.return_value.content = b'fake_audio_data'
         
+        # Set required environment variable
+        os.environ['TELEGRAM_BOT_TOKEN'] = 'test_token'
+        
         transcriber = VoiceTranscriber()
         result = transcriber._download_voice_file('test_file_id')
         
@@ -69,6 +72,7 @@ class TestVoiceTranscriber:
         
         assert result is None
     
+    @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
     @patch('src.models.voice_transcriber.aai')
     def test_transcribe_with_assemblyai_success(self, mock_aai):
         """Test successful AssemblyAI transcription"""
@@ -86,6 +90,7 @@ class TestVoiceTranscriber:
         
         assert result == "Hello world"
     
+    @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
     @patch('src.models.voice_transcriber.aai')
     def test_transcribe_with_assemblyai_failure(self, mock_aai):
         """Test AssemblyAI transcription failure"""
@@ -100,6 +105,7 @@ class TestVoiceTranscriber:
         
         assert result is None
     
+    @patch('src.models.voice_transcriber.GOOGLE_SPEECH_AVAILABLE', True)
     @patch('src.models.voice_transcriber.speech')
     def test_transcribe_with_google_speech_success(self, mock_speech):
         """Test successful Google Speech-to-Text transcription"""
@@ -118,6 +124,7 @@ class TestVoiceTranscriber:
         
         assert result == "Hello world"
     
+    @patch('src.models.voice_transcriber.GOOGLE_SPEECH_AVAILABLE', True)
     @patch('src.models.voice_transcriber.speech')
     def test_transcribe_with_google_speech_failure(self, mock_speech):
         """Test Google Speech-to-Text transcription failure"""
@@ -175,18 +182,22 @@ class TestVoiceTranscriber:
     @patch('time.time')
     def test_respect_rate_limit(self, mock_time, mock_sleep):
         """Test rate limiting functionality"""
-        mock_time.return_value = 0
+        # Set up time to return 0 for first call, then 0.5 for second call
+        mock_time.side_effect = [0, 0.5]
         
         transcriber = VoiceTranscriber()
         
-        # First call should not sleep
+        # First call should sleep because time difference is 0 < min_interval (1)
+        transcriber._respect_rate_limit('assemblyai')
+        mock_sleep.assert_called_once_with(1.0)  # Should sleep for full interval
+        
+        # Reset mock for second test
+        mock_sleep.reset_mock()
+        mock_time.side_effect = [1.5, 2.0]  # More than 1 second apart
+        
+        # Second call should not sleep because time difference > min_interval
         transcriber._respect_rate_limit('assemblyai')
         mock_sleep.assert_not_called()
-        
-        # Second call within rate limit should sleep
-        with patch('time.sleep') as mock_sleep2:
-            transcriber._respect_rate_limit('assemblyai')
-            mock_sleep2.assert_called_once()
 
 
 def mock_open(read_data):
