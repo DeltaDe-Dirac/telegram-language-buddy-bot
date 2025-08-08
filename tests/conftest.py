@@ -13,13 +13,13 @@ def test_database():
     Base.metadata.create_all(engine)
     
     # Create session factory
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    testing_session_local = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     
     # Override the database manager's engine
     original_engine = DatabaseManager.engine
     original_session_local = DatabaseManager.session_local
     DatabaseManager.engine = engine
-    DatabaseManager.session_local = TestingSessionLocal
+    DatabaseManager.session_local = testing_session_local
     
     yield engine
     
