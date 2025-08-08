@@ -315,6 +315,7 @@ class TelegramBot:
             target_lang = self._determine_target_language(detected_lang, lang1, lang2)
             if not target_lang:
                 # Detected language is not in the pair, show transcription only
+                logger.warning(f"Probably cound't detect language correctly from user {user_name}, sending transcription only")
                 response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
                 if detected_lang:
                     response += f"\n\n🌍 **Detected Language:** {LanguageDetector.SUPPORTED_LANGUAGES.get(detected_lang, detected_lang)}"
@@ -381,23 +382,15 @@ class TelegramBot:
                 transcript = None
                 detected_lang = None
                 
-                # Step 1: Try to detect language with AssemblyAI first
-                if self.voice_transcriber.services_available.get('assemblyai', False):
-                    logger.info("[INFO] Trying AssemblyAI language detection...")
-                    try:
-                        detected_lang = self._detect_language_assemblyai(temp_audio_path)
-                        if detected_lang:
-                            logger.info(f"[INFO] Detected language: {detected_lang}")
-                    except Exception as e:
-                        logger.warning(f"[WARN] AssemblyAI language detection failed: {e}")
-                
-                # Step 2: Try Google Speech-to-Text with detected language
+                # Step 1: Try Google Speech-to-Text first with auto-detection
                 if self.voice_transcriber.services_available.get('google_speech', False):
-                    logger.info(f"[INFO] Trying Google Speech-to-Text with language {detected_lang or 'auto-detect'}...")
+                    logger.info("[INFO] Trying Google Speech-to-Text with auto-detection...")
                     try:
-                        transcript = self._transcribe_with_google_speech(temp_audio_path, detected_lang)
+                        transcript = self._transcribe_with_google_speech(temp_audio_path, None)  # None for auto-detection
                         if transcript:
                             logger.info("[SUCCESS] Google transcription successful")
+                            # Try to detect language from the transcript
+                            detected_lang = self.translator.detect_language(transcript)
                             return transcript, detected_lang
                     except (GoogleAPICallError, ResourceExhausted) as e:
                         logger.warning(f"[WARN] Google API failed: {e}")
@@ -406,16 +399,15 @@ class TelegramBot:
                         logger.warning(f"[WARN] Google Speech unexpected error: {e}")
                         logger.info("[INFO] Falling back to AssemblyAI...")
                 
-                # Step 3: Fallback to AssemblyAI for full transcription
+                # Step 2: Fallback to AssemblyAI for full transcription
                 if self.voice_transcriber.services_available.get('assemblyai', False):
                     logger.info("[INFO] Trying AssemblyAI transcription as fallback...")
                     try:
                         transcript = self.voice_transcriber._transcribe_with_assemblyai(temp_audio_path)
                         if transcript:
                             logger.info("[SUCCESS] AssemblyAI transcription successful")
-                            # If we didn't detect language earlier, try to detect it from the transcript
-                            if not detected_lang:
-                                detected_lang = self.translator.detect_language(transcript)
+                            # Try to detect language from the transcript
+                            detected_lang = self.translator.detect_language(transcript)
                             return transcript, detected_lang
                     except Exception as e:
                         logger.error(f"[ERROR] AssemblyAI failed: {e}")
@@ -434,31 +426,7 @@ class TelegramBot:
             logger.error(f"Error in transcription fallback: {e}")
             return None
     
-    def _detect_language_assemblyai(self, audio_path: str) -> Optional[str]:
-        """Quickly detect spoken language using AssemblyAI"""
-        try:
-            self.voice_transcriber._respect_rate_limit('assemblyai')
-            
-            aai.settings.api_key = self.voice_transcriber.assemblyai_api_key
-            transcriber = aai.Transcriber()
-            
-            transcript = transcriber.transcribe(
-                audio_path,
-                config=aai.TranscriptionConfig(language_detection=True)
-            )
-            
-            # The detected language code is inside the JSON response
-            lang_code = transcript.json_response.get("language_code", None)
-            if lang_code:
-                logger.info(f"[INFO] AssemblyAI detected language: {lang_code}")
-                return lang_code
-            else:
-                logger.warning("[WARN] AssemblyAI language detection returned no language code")
-                return None
-                
-        except Exception as e:
-            logger.error(f"[ERROR] AssemblyAI language detection failed: {e}")
-            return None
+
     
     def _transcribe_with_google_speech(self, audio_path: str, language_code: Optional[str] = None) -> Optional[str]:
         """Full transcription using Google Speech-to-Text with optional language specification"""
@@ -481,11 +449,13 @@ class TelegramBot:
                     enable_automatic_punctuation=True
                 )
             else:
-                # Use auto language detection
+                # Use auto language detection with multiple language hints
+                # Common languages for better auto-detection
                 config = speech.RecognitionConfig(
                     encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
                     sample_rate_hertz=48000,
-                    language_code="en-US",  # Default, will auto-detect
+                    language_code="en-US",  # Primary language hint
+                    alternative_language_codes=["es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", "ja-JP", "ko-KR", "zh-CN"],
                     enable_automatic_punctuation=True
                 )
             
