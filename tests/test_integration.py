@@ -120,7 +120,7 @@ class TestIntegration(unittest.TestCase):
                 bot._handle_message(message)
                 
                 # Verify language detection was called
-                mock_detect.assert_called_once_with("Hello world")
+                mock_detect.assert_called_once_with("Hello world", allowed_langs=("en", "es"))
                 
                 # Verify translation was called
                 mock_translate.assert_called_once_with("Hello world", "es", "en")
