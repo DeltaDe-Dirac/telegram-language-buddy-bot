@@ -24,7 +24,7 @@ class UserStats(Base):
     __tablename__ = 'user_stats'
     
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, unique=True, nullable=False)
+    user_id = Column(BigInteger, unique=True, nullable=False)
     translations = Column(Integer, default=0)
     joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_activity = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -47,7 +47,7 @@ class MessageTranslation(Base):
     id = Column(Integer, primary_key=True)
     chat_id = Column(BigInteger, nullable=False)
     message_id = Column(Integer, nullable=False)
-    user_id = Column(Integer, nullable=False)
+    user_id = Column(BigInteger, nullable=False)
     original_text = Column(Text, nullable=False)
     translated_text = Column(Text, nullable=False)
     source_language = Column(String(10), nullable=False)
@@ -99,7 +99,7 @@ class DatabaseManager:
             Base.metadata.create_all(bind=self.engine)
     
     def _fix_postgresql_schema(self):
-        """Fix PostgreSQL schema to use BIGINT for chat_id columns"""
+        """Fix PostgreSQL schema to use BIGINT for chat_id and user_id columns"""
         try:
             with self.engine.connect() as conn:
                 # Check if tables exist
@@ -107,7 +107,7 @@ class DatabaseManager:
                     SELECT table_name 
                     FROM information_schema.tables 
                     WHERE table_schema = 'public' 
-                    AND table_name IN ('user_preferences', 'language_selection_state', 'message_translations')
+                    AND table_name IN ('user_preferences', 'language_selection_state', 'message_translations', 'user_stats')
                 """))
                 existing_tables = [row[0] for row in result]
                 
@@ -117,25 +117,46 @@ class DatabaseManager:
                     logger.info("Created new tables with proper schema")
                     return
                 
-                # Check if chat_id columns are BIGINT
+                # Check columns that need to be BIGINT and drop tables that need fixing
+                tables_to_recreate = set()
+                
                 for table_name in existing_tables:
-                    result = conn.execute(text(f"""
-                        SELECT data_type 
-                        FROM information_schema.columns 
-                        WHERE table_name = '{table_name}' 
-                        AND column_name = 'chat_id'
-                    """))
-                    column_type = result.fetchone()
+                    # Check chat_id column for tables that have it
+                    if table_name in ['user_preferences', 'language_selection_state', 'message_translations']:
+                        result = conn.execute(text(f"""
+                            SELECT data_type 
+                            FROM information_schema.columns 
+                            WHERE table_name = '{table_name}' 
+                            AND column_name = 'chat_id'
+                        """))
+                        column_type = result.fetchone()
+                        
+                        if column_type and column_type[0] != 'bigint':
+                            logger.warning(f"Table {table_name} has chat_id as {column_type[0]}, need to fix...")
+                            tables_to_recreate.add(table_name)
                     
-                    if column_type and column_type[0] != 'bigint':
-                        logger.warning(f"Table {table_name} has chat_id as {column_type[0]}, need to fix...")
-                        # Drop and recreate the table
-                        conn.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
-                        logger.info(f"Dropped table {table_name} to recreate with proper schema")
+                    # Check user_id column for tables that have it
+                    if table_name in ['user_stats', 'message_translations']:
+                        result = conn.execute(text(f"""
+                            SELECT data_type 
+                            FROM information_schema.columns 
+                            WHERE table_name = '{table_name}' 
+                            AND column_name = 'user_id'
+                        """))
+                        column_type = result.fetchone()
+                        
+                        if column_type and column_type[0] != 'bigint':
+                            logger.warning(f"Table {table_name} has user_id as {column_type[0]}, need to fix...")
+                            tables_to_recreate.add(table_name)
+                
+                # Drop tables that need to be recreated
+                for table_name in tables_to_recreate:
+                    conn.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+                    logger.info(f"Dropped table {table_name} to recreate with proper schema")
                 
                 # Create tables with proper schema
                 Base.metadata.create_all(bind=self.engine)
-                logger.info("Recreated tables with proper BIGINT chat_id columns")
+                logger.info("Recreated tables with proper BIGINT chat_id and user_id columns")
                 
         except (OSError, ImportError, AttributeError, ValueError) as e:
             logger.error(f"Error fixing PostgreSQL schema: {e}")
