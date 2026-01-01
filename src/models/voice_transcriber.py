@@ -170,7 +170,7 @@ class VoiceTranscriber:
             
             # AssemblyAI doesn't provide language_code in the current API
             # We'll rely on the language detection in the translator instead
-            logger.info(f"[INFO] AssemblyAI transcription completed, language detection will be done by translator")
+            logger.info("[INFO] AssemblyAI transcription completed, language detection will be done by translator")
             return None
                 
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
@@ -302,6 +302,36 @@ class VoiceTranscriber:
         result = self.transcribe_voice_message_with_confidence(file_id)
         return result.text if result else None
     
+    def _try_transcription_service(self, service_name: str, temp_audio_path: str, 
+                                  confidence_threshold: float, all_results: list) -> Optional[TranscriptionResult]:
+        """Try a transcription service and add result if successful"""
+        if not self.services_available.get(service_name, False):
+            return None
+        
+        logger.info(f"[INFO] Trying {service_name} transcription...")
+        try:
+            if service_name == 'whisper':
+                result = self.whisper_transcriber.transcribe_audio(temp_audio_path)
+            elif service_name == 'assemblyai':
+                result = self._transcribe_with_assemblyai(temp_audio_path)
+            elif service_name == 'google_speech':
+                result = self._transcribe_with_google_speech(temp_audio_path)
+            else:
+                return None
+            
+            if result:
+                all_results.append(result)
+                logger.info(f"[INFO] {service_name} confidence: {result.confidence:.3f}")
+                
+                # If service has high confidence, we can stop here
+                if result.is_high_confidence(confidence_threshold):
+                    logger.info(f"[INFO] {service_name} achieved high confidence ({result.confidence:.3f}), using result")
+                    return result
+        except Exception as e:
+            logger.warning(f"[WARN] {service_name} failed: {e}")
+        
+        return None
+    
     def transcribe_voice_message_with_confidence(self, file_id: str, confidence_threshold: float = 0.7) -> Optional[TranscriptionResult]:
         """Transcribe voice message with confidence-based fallback strategy"""
         logger.info(f"Starting confidence-based voice transcription for file: {file_id}")
@@ -323,55 +353,13 @@ class VoiceTranscriber:
         try:
             all_results = []
             
-            # Step 1: Try Whisper API first (best for Hebrew and many languages)
-            if self.services_available.get('whisper', False):
-                logger.info("[INFO] Trying Whisper API transcription...")
-                try:
-                    result = self.whisper_transcriber.transcribe_audio(temp_audio_path)
-                    if result:
-                        all_results.append(result)
-                        logger.info(f"[INFO] Whisper confidence: {result.confidence:.3f}")
-                        
-                        # If Whisper has high confidence, we can stop here
-                        if result.is_high_confidence(confidence_threshold):
-                            logger.info(f"[INFO] Whisper achieved high confidence ({result.confidence:.3f}), using result")
-                            return result
-                except Exception as e:
-                    logger.warning(f"[WARN] Whisper failed: {e}")
+            # Try services in order: Whisper, AssemblyAI, Google Speech
+            for service_name in ['whisper', 'assemblyai', 'google_speech']:
+                result = self._try_transcription_service(service_name, temp_audio_path, confidence_threshold, all_results)
+                if result:
+                    return result
             
-            # Step 2: Try AssemblyAI (good fallback)
-            if self.services_available.get('assemblyai', False):
-                logger.info("[INFO] Trying AssemblyAI transcription...")
-                try:
-                    result = self._transcribe_with_assemblyai(temp_audio_path)
-                    if result:
-                        all_results.append(result)
-                        logger.info(f"[INFO] AssemblyAI confidence: {result.confidence:.3f}")
-                        
-                        # If AssemblyAI has high confidence, we can stop here
-                        if result.is_high_confidence(confidence_threshold):
-                            logger.info(f"[INFO] AssemblyAI achieved high confidence ({result.confidence:.3f}), using result")
-                            return result
-                except Exception as e:
-                    logger.warning(f"[WARN] AssemblyAI failed: {e}")
-            
-            # Step 3: Try Google Speech-to-Text (final fallback)
-            if self.services_available.get('google_speech', False):
-                logger.info("[INFO] Trying Google Speech-to-Text...")
-                try:
-                    result = self._transcribe_with_google_speech(temp_audio_path)
-                    if result:
-                        all_results.append(result)
-                        logger.info(f"[INFO] Google Speech confidence: {result.confidence:.3f}")
-                        
-                        # If Google has high confidence, we can stop here
-                        if result.is_high_confidence(confidence_threshold):
-                            logger.info(f"[INFO] Google Speech achieved high confidence ({result.confidence:.3f}), using result")
-                            return result
-                except Exception as e:
-                    logger.warning(f"[WARN] Google Speech-to-Text failed: {e}")
-            
-            # Step 4: Compare all results and choose the best one
+            # Compare all results and choose the best one
             if all_results:
                 logger.info(f"[INFO] Comparing {len(all_results)} transcription results...")
                 best_result = TranscriptionQualityAnalyzer.compare_transcriptions(all_results)

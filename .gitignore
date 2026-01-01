@@ -137,7 +137,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
-!.env.example
+!.env.example  # Track .env.example file (template for environment variables)
 .venv
 env/
 venv/

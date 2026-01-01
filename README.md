@@ -161,19 +161,24 @@ python -m src.main
 
 The SQLite database file (`bot_data.db`) will be created in the project root.
 
-### Heroku Deployment
+### Production Deployment (Railway/Render/Heroku)
 
-The bot automatically uses PostgreSQL on Heroku:
+The bot automatically uses PostgreSQL in production:
 
-- **Database**: PostgreSQL (Essential 0 plan, ~$5/month)
+- **Database**: PostgreSQL (free tier available on Railway/Render)
 - **Persistence**: Data persists across deployments
 - **Automatic Setup**: Database tables are created automatically
 - **Schema Management**: Automatic PostgreSQL schema fixes for chat_id columns
 
-**To view database logs:**
-```bash
-heroku logs --tail
-```
+**Database Configuration:**
+- Railway: Automatically provisions PostgreSQL and sets `DATABASE_URL`
+- Render: Add PostgreSQL service, automatically linked via `DATABASE_URL`
+- Heroku: Add PostgreSQL addon, automatically sets `DATABASE_URL`
+
+**To view logs:**
+- Railway: `railway logs` (or use Railway dashboard)
+- Render: View logs in Render dashboard
+- Heroku: `heroku logs --tail`
 
 ## 📱 Bot Commands
 
@@ -278,7 +283,95 @@ The bot provides several REST API endpoints:
 
 ## 🚀 Deployment
 
-### Heroku Deployment
+> 💡 **Want to deploy for FREE?** Check out [FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md) for detailed guides on Railway, Render, and Fly.io!
+
+### Railway Deployment (Free Tier Available) ⭐ Recommended
+
+Railway offers a free tier with $5/month credit, perfect for small bots!
+
+1. **Sign up at [Railway](https://railway.app/)**
+   - Use GitHub to sign in for easy deployment
+
+2. **Create a new project**
+   - Click "New Project"
+   - Select "Deploy from GitHub repo"
+   - Choose this repository
+
+3. **Add PostgreSQL database**
+   - Click "New" → "Database" → "Add PostgreSQL"
+   - Railway automatically sets `DATABASE_URL` environment variable
+
+4. **Set environment variables**
+   - Go to your service → "Variables"
+   - Add:
+     - `TELEGRAM_BOT_TOKEN=your_bot_token_here`
+     - `FLASK_ENV=production`
+   - Optional voice transcription keys:
+     - `ASSEMBLYAI_API_KEY=your_key`
+     - `GOOGLE_APPLICATION_CREDENTIALS=path/to/credentials.json`
+
+5. **Deploy**
+   - Railway automatically deploys on every push to main
+   - Or click "Deploy" to deploy manually
+
+6. **Set Telegram webhook**
+   - Get your Railway URL from the service settings
+   - Set webhook:
+     ```bash
+     curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
+          -H "Content-Type: application/json" \
+          -d '{"url": "https://your-app.railway.app/webhook"}'
+     ```
+
+**Cost**: Free tier includes $5/month credit (usually enough for small bots)
+
+### Render Deployment (Free Tier Available)
+
+Render offers a free tier with some limitations (spins down after inactivity).
+
+1. **Sign up at [Render](https://render.com/)**
+   - Use GitHub to sign in
+
+2. **Create a new Web Service**
+   - Click "New" → "Web Service"
+   - Connect your GitHub repository
+   - Select this repository
+
+3. **Configure the service**
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn src.main:app`
+   - **Environment**: `Python 3`
+
+4. **Add PostgreSQL database**
+   - Click "New" → "PostgreSQL"
+   - Select "Free" plan
+   - Render automatically sets `DATABASE_URL` in your web service
+
+5. **Set environment variables**
+   - In your web service settings → "Environment"
+   - Add:
+     - `FLASK_ENV=production`
+     - `TELEGRAM_BOT_TOKEN=your_bot_token_here`
+   - Optional voice transcription keys
+
+6. **Deploy**
+   - Render automatically deploys on every push
+   - First deployment may take a few minutes
+
+7. **Set Telegram webhook**
+   - Get your Render URL (e.g., `your-app.onrender.com`)
+   - Set webhook:
+     ```bash
+     curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
+          -H "Content-Type: application/json" \
+          -d '{"url": "https://your-app.onrender.com/webhook"}'
+     ```
+
+**Note**: Free tier services spin down after 15 minutes of inactivity. First request may take ~30 seconds to wake up.
+
+**Cost**: Free tier available (with limitations)
+
+### Heroku Deployment (Paid)
 
 1. **Install Heroku CLI**
    ```bash

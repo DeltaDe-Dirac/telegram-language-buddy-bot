@@ -2,5 +2,6 @@
     "sonarlint.connectedMode.project": {
         "connectionId": "http-localhost-9000",
         "projectKey": "DeltaDe-Dirac"
-    }
+    },
+    "git.autofetch": false
 }
