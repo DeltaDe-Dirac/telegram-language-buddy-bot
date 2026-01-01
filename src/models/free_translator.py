@@ -136,39 +136,11 @@ class FreeTranslator:
             
             # Optional: bias towards allowed languages when applicable
             if allowed_langs:
-                allowed_set = {self.language_mapping.get(code, code) for code in allowed_langs}
-                mapped_final = self.language_mapping.get(final_code, final_code)
-                
-                if mapped_final not in allowed_set:
-                    logger.info(f"Detected '{mapped_final}' not in allowed {allowed_set}. Applying pair-constrained logic.")
-                    
-                    # Case: Romanized text for a non-Latin language in the allowed pair
-                    non_latin_in_pair = [l for l in allowed_set if l in self.non_latin_langs]
-                    latin_in_pair = [l for l in allowed_set if l not in self.non_latin_langs]
-                    if (
-                        len(non_latin_in_pair) == 1 and len(latin_in_pair) == 1 and
-                        self._is_latin_only_text(clean_text) and
-                        (script_detection is None or script_detection not in allowed_set) and
-                        confidence < 0.90  # only override when Google's confidence isn't very high
-                    ):
-                        assumed = non_latin_in_pair[0]
-                        logger.info(
-                            f"Assuming romanized {assumed} within allowed pair {allowed_set} "
-                            f"(latin-only text, low confidence {confidence:.2f})"
-                        )
-                        return assumed
-                    
-                    # If script detection matches an allowed language, prefer it
-                    if script_detection in allowed_set:
-                        logger.info(f"Using script-based detection within allowed set: {script_detection}")
-                        return script_detection  # type: ignore
-                    
-                    # If Google confidence is moderate/low, try targeted detection using translation src
-                    if confidence < 0.85:
-                        targeted = self._targeted_detection_with_allowed(translator, clean_text, allowed_set)
-                        if targeted:
-                            logger.info(f"Targeted detection selected: {targeted}")
-                            return targeted
+                adjusted_code = self._apply_allowed_languages_bias(
+                    final_code, allowed_langs, clean_text, script_detection, confidence, translator
+                )
+                if adjusted_code:
+                    return adjusted_code
             
             logger.info(
                 f"Language detection: Google='{detected_code}' (conf={confidence:.2f}), "
@@ -180,6 +152,48 @@ class FreeTranslator:
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
             logger.error(f"Language detection failed: {e}")
             return 'unknown'
+    
+    def _apply_allowed_languages_bias(self, final_code: str, allowed_langs: Tuple[str, str], 
+                                   clean_text: str, script_detection: Optional[str], 
+                                   confidence: float, translator) -> Optional[str]:
+        """Apply bias towards allowed languages when detection doesn't match"""
+        allowed_set = {self.language_mapping.get(code, code) for code in allowed_langs}
+        mapped_final = self.language_mapping.get(final_code, final_code)
+        
+        if mapped_final in allowed_set:
+            return None  # Already in allowed set, no adjustment needed
+        
+        logger.info(f"Detected '{mapped_final}' not in allowed {allowed_set}. Applying pair-constrained logic.")
+        
+        # Case: Romanized text for a non-Latin language in the allowed pair
+        non_latin_in_pair = [l for l in allowed_set if l in self.non_latin_langs]
+        latin_in_pair = [l for l in allowed_set if l not in self.non_latin_langs]
+        if (
+            len(non_latin_in_pair) == 1 and len(latin_in_pair) == 1 and
+            self._is_latin_only_text(clean_text) and
+            (script_detection is None or script_detection not in allowed_set) and
+            confidence < 0.90  # only override when Google's confidence isn't very high
+        ):
+            assumed = non_latin_in_pair[0]
+            logger.info(
+                f"Assuming romanized {assumed} within allowed pair {allowed_set} "
+                f"(latin-only text, low confidence {confidence:.2f})"
+            )
+            return assumed
+        
+        # If script detection matches an allowed language, prefer it
+        if script_detection in allowed_set:
+            logger.info(f"Using script-based detection within allowed set: {script_detection}")
+            return script_detection  # type: ignore
+        
+        # If Google confidence is moderate/low, try targeted detection using translation src
+        if confidence < 0.85:
+            targeted = self._targeted_detection_with_allowed(translator, clean_text, allowed_set)
+            if targeted:
+                logger.info(f"Targeted detection selected: {targeted}")
+                return targeted
+        
+        return None
     
     def _is_latin_only_text(self, text: str) -> bool:
         """Return True if the text contains only Latin letters, digits, whitespace, or punctuation."""

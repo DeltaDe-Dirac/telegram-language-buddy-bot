@@ -382,74 +382,79 @@ class TelegramBot:
     
 
     
+    def _create_google_credentials(self):
+        """Create Google credentials from JSON if available"""
+        if not self.voice_transcriber.google_credentials_json:
+            logger.warning("[WARN] No Google credentials JSON available - GOOGLE_APPLICATION_CREDENTIALS_JSON not set")
+            return None
+        
+        import json
+        from google.oauth2 import service_account
+        try:
+            logger.info(f"[DEBUG] Google credentials JSON length: {len(self.voice_transcriber.google_credentials_json)}")
+            logger.info(f"[DEBUG] Google credentials JSON preview: {self.voice_transcriber.google_credentials_json[:100]}...")
+            
+            # Check if JSON is empty or just whitespace
+            if not self.voice_transcriber.google_credentials_json.strip():
+                logger.error("[ERROR] Google credentials JSON is empty or contains only whitespace")
+                raise ValueError("Empty Google credentials JSON")
+            
+            credentials_info = json.loads(self.voice_transcriber.google_credentials_json)
+            credentials = service_account.Credentials.from_service_account_info(credentials_info)
+            logger.info("[DEBUG] Successfully created Google credentials from JSON")
+            return credentials
+        except json.JSONDecodeError as e:
+            logger.error(f"[ERROR] Failed to parse Google credentials JSON: {e}")
+            logger.error(f"[ERROR] JSON content (first 200 chars): {self.voice_transcriber.google_credentials_json[:200]}")
+            logger.error("[ERROR] Please ensure GOOGLE_APPLICATION_CREDENTIALS_JSON contains valid JSON")
+        except ValueError as e:
+            logger.error(f"[ERROR] Google credentials validation failed: {e}")
+        except Exception as e:
+            logger.error(f"[ERROR] Failed to create Google credentials: {e}")
+        return None
+    
+    def _create_speech_config(self, language_code: Optional[str]):
+        """Create Google Speech recognition configuration"""
+        if language_code:
+            return speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+                sample_rate_hertz=48000,  # Telegram voice messages are typically 48kHz
+                language_code=language_code,
+                enable_automatic_punctuation=True
+            )
+        
+        # Use auto language detection with multiple language hints
+        # Extended list including Hebrew and other languages
+        return speech.RecognitionConfig(
+            encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+            sample_rate_hertz=48000,
+            language_code="en-US",  # Primary language hint
+            alternative_language_codes=[
+                "es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", 
+                "ja-JP", "ko-KR", "zh-CN", "he-IL", "ar-SA", "hi-IN",
+                "tr-TR", "pl-PL", "nl-NL", "sv-SE", "da-DK", "no-NO",
+                "fi-FI", "cs-CZ", "sk-SK", "hu-HU", "ro-RO", "bg-BG",
+                "hr-HR", "sl-SI", "et-EE", "lv-LV", "lt-LT", "mt-MT"
+            ],
+            enable_automatic_punctuation=True
+        )
+    
     def _transcribe_with_google_speech(self, audio_path: str, language_code: Optional[str] = None) -> Optional[str]:
         """Full transcription using Google Speech-to-Text with optional language specification"""
         try:
             self.voice_transcriber._respect_rate_limit('google_speech')
             
             # Create credentials from JSON if available
-            credentials = None
-            if self.voice_transcriber.google_credentials_json:
-                import json
-                from google.oauth2 import service_account
-                try:
-                    logger.info(f"[DEBUG] Google credentials JSON length: {len(self.voice_transcriber.google_credentials_json)}")
-                    logger.info(f"[DEBUG] Google credentials JSON preview: {self.voice_transcriber.google_credentials_json[:100]}...")
-                    
-                    # Check if JSON is empty or just whitespace
-                    if not self.voice_transcriber.google_credentials_json.strip():
-                        logger.error("[ERROR] Google credentials JSON is empty or contains only whitespace")
-                        raise ValueError("Empty Google credentials JSON")
-                    
-                    credentials_info = json.loads(self.voice_transcriber.google_credentials_json)
-                    credentials = service_account.Credentials.from_service_account_info(credentials_info)
-                    logger.info("[DEBUG] Successfully created Google credentials from JSON")
-                except json.JSONDecodeError as e:
-                    logger.error(f"[ERROR] Failed to parse Google credentials JSON: {e}")
-                    logger.error(f"[ERROR] JSON content (first 200 chars): {self.voice_transcriber.google_credentials_json[:200]}")
-                    logger.error("[ERROR] Please ensure GOOGLE_APPLICATION_CREDENTIALS_JSON contains valid JSON")
-                except ValueError as e:
-                    logger.error(f"[ERROR] Google credentials validation failed: {e}")
-                except Exception as e:
-                    logger.error(f"[ERROR] Failed to create Google credentials: {e}")
-            else:
-                logger.warning("[WARN] No Google credentials JSON available - GOOGLE_APPLICATION_CREDENTIALS_JSON not set")
+            credentials = self._create_google_credentials()
             
             # Create client with credentials
-            if credentials:
-                client = speech.SpeechClient(credentials=credentials)
-            else:
-                client = speech.SpeechClient()
+            client = speech.SpeechClient(credentials=credentials) if credentials else speech.SpeechClient()
             
             with open(audio_path, "rb") as f:
                 content = f.read()
             
             audio = speech.RecognitionAudio(content=content)
-            
-            # Configure based on whether we have a detected language
-            if language_code:
-                config = speech.RecognitionConfig(
-                    encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
-                    sample_rate_hertz=48000,  # Telegram voice messages are typically 48kHz
-                    language_code=language_code,
-                    enable_automatic_punctuation=True
-                )
-            else:
-                # Use auto language detection with multiple language hints
-                # Extended list including Hebrew and other languages
-                config = speech.RecognitionConfig(
-                    encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
-                    sample_rate_hertz=48000,
-                    language_code="en-US",  # Primary language hint
-                    alternative_language_codes=[
-                        "es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "ru-RU", 
-                        "ja-JP", "ko-KR", "zh-CN", "he-IL", "ar-SA", "hi-IN",
-                        "tr-TR", "pl-PL", "nl-NL", "sv-SE", "da-DK", "no-NO",
-                        "fi-FI", "cs-CZ", "sk-SK", "hu-HU", "ro-RO", "bg-BG",
-                        "hr-HR", "sl-SI", "et-EE", "lv-LV", "lt-LT", "mt-MT"
-                    ],
-                    enable_automatic_punctuation=True
-                )
+            config = self._create_speech_config(language_code)
             
             response = client.recognize(config=config, audio=audio)
             

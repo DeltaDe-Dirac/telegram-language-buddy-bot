@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Optional
 from sqlalchemy import create_engine, Column, Integer, BigInteger, String, DateTime, Text, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timezone
@@ -98,6 +99,35 @@ class DatabaseManager:
             # Fallback to normal table creation
             Base.metadata.create_all(bind=self.engine)
     
+    def _check_column_type(self, conn, table_name: str, column_name: str) -> Optional[str]:
+        """Check the data type of a specific column in a table"""
+        result = conn.execute(text(f"""
+            SELECT data_type 
+            FROM information_schema.columns 
+            WHERE table_name = '{table_name}' 
+            AND column_name = '{column_name}'
+        """))
+        column_type = result.fetchone()
+        return column_type[0] if column_type else None
+    
+    def _needs_schema_fix(self, conn, table_name: str) -> bool:
+        """Check if a table needs schema fix (has non-BIGINT chat_id or user_id)"""
+        # Check chat_id column for tables that have it
+        if table_name in ['user_preferences', 'language_selection_state', 'message_translations']:
+            column_type = self._check_column_type(conn, table_name, 'chat_id')
+            if column_type and column_type != 'bigint':
+                logger.warning(f"Table {table_name} has chat_id as {column_type}, need to fix...")
+                return True
+        
+        # Check user_id column for tables that have it
+        if table_name in ['user_stats', 'message_translations']:
+            column_type = self._check_column_type(conn, table_name, 'user_id')
+            if column_type and column_type != 'bigint':
+                logger.warning(f"Table {table_name} has user_id as {column_type}, need to fix...")
+                return True
+        
+        return False
+    
     def _fix_postgresql_schema(self):
         """Fix PostgreSQL schema to use BIGINT for chat_id and user_id columns"""
         try:
@@ -118,36 +148,8 @@ class DatabaseManager:
                     return
                 
                 # Check columns that need to be BIGINT and drop tables that need fixing
-                tables_to_recreate = set()
-                
-                for table_name in existing_tables:
-                    # Check chat_id column for tables that have it
-                    if table_name in ['user_preferences', 'language_selection_state', 'message_translations']:
-                        result = conn.execute(text(f"""
-                            SELECT data_type 
-                            FROM information_schema.columns 
-                            WHERE table_name = '{table_name}' 
-                            AND column_name = 'chat_id'
-                        """))
-                        column_type = result.fetchone()
-                        
-                        if column_type and column_type[0] != 'bigint':
-                            logger.warning(f"Table {table_name} has chat_id as {column_type[0]}, need to fix...")
-                            tables_to_recreate.add(table_name)
-                    
-                    # Check user_id column for tables that have it
-                    if table_name in ['user_stats', 'message_translations']:
-                        result = conn.execute(text(f"""
-                            SELECT data_type 
-                            FROM information_schema.columns 
-                            WHERE table_name = '{table_name}' 
-                            AND column_name = 'user_id'
-                        """))
-                        column_type = result.fetchone()
-                        
-                        if column_type and column_type[0] != 'bigint':
-                            logger.warning(f"Table {table_name} has user_id as {column_type[0]}, need to fix...")
-                            tables_to_recreate.add(table_name)
+                tables_to_recreate = {table for table in existing_tables 
+                                    if self._needs_schema_fix(conn, table)}
                 
                 # Drop tables that need to be recreated
                 for table_name in tables_to_recreate:
