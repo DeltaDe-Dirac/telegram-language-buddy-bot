@@ -131,7 +131,7 @@ class FreeTranslator:
             
             # Method 3: Cross-validate and resolve conflicts
             final_code = self._resolve_language_detection(
-                detected_code, confidence, script_detection, clean_text
+                detected_code, confidence, script_detection
             )
             
             # Optional: bias towards allowed languages when applicable
@@ -247,7 +247,7 @@ class FreeTranslator:
         return None
     
     def _resolve_language_detection(self, google_code: str, confidence: float, 
-                                  script_code: Optional[str], text: str) -> str:
+                                  script_code: Optional[str]) -> str:
         """Resolve conflicts between different detection methods"""
         
         # Apply language code mapping

@@ -170,7 +170,7 @@ class VoiceTranscriber:
             
             # AssemblyAI doesn't provide language_code in the current API
             # We'll rely on the language detection in the translator instead
-            logger.info(f"[INFO] AssemblyAI transcription completed, language detection will be done by translator")
+            logger.info("[INFO] AssemblyAI transcription completed, language detection will be done by translator")
             return None
                 
         except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:

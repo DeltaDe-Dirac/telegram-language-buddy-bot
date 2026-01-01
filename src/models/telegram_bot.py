@@ -319,7 +319,7 @@ class TelegramBot:
                 response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
                 if detected_lang:
                     response += f"\n\n🌍 **Detected Language:** {LanguageDetector.SUPPORTED_LANGUAGES.get(detected_lang, detected_lang)}"
-                response += f"\n\n💡 **Tip:** Use /setpair to configure languages for automatic translation."
+                response += "\n\n💡 **Tip:** Use /setpair to configure languages for automatic translation."
                 self.send_message(chat_id, response)
                 return
             

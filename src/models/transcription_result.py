@@ -110,7 +110,7 @@ class TranscriptionQualityAnalyzer:
         # If confidences are close, prefer Whisper for Hebrew and other languages
         for result in sorted_results:
             if result.service == 'whisper':
-                logger.info(f"Using Whisper despite similar confidence due to better language support")
+                logger.info("Using Whisper despite similar confidence due to better language support")
                 return result
         
         # Default to highest confidence
