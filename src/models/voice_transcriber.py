@@ -17,7 +17,7 @@ except ImportError:
 
 try:
     from google.cloud import speech
-    from google.api_core.exceptions import GoogleAPICallError, ResourceExhausted
+    from google.api_core.exceptions import GoogleAPICallError
     GOOGLE_SPEECH_AVAILABLE = True
 except ImportError:
     GOOGLE_SPEECH_AVAILABLE = False
@@ -69,10 +69,10 @@ class VoiceTranscriber:
             
             # Parse the JSON credentials to validate they're correct
             credentials_info = json.loads(self.google_credentials_json)
-            
-            # Create credentials object to validate
-            credentials = service_account.Credentials.from_service_account_info(credentials_info)
-            
+
+            # Validate credentials by creating them (we don't need to keep the object)
+            service_account.Credentials.from_service_account_info(credentials_info)
+
             logger.info("Successfully validated Google credentials from JSON")
             
         except Exception as e:
@@ -111,11 +111,8 @@ class VoiceTranscriber:
     def _download_voice_file(self, file_id: str) -> Optional[bytes]:
         """Download voice file from Telegram"""
         try:
-            # Get file info from Telegram
-            token = os.getenv('TELEGRAM_BOT_TOKEN')
-            if not token:
-                logger.error("TELEGRAM_BOT_TOKEN not found")
-                return None
+            token = os.getenv('TELEGRAM_BOT_TOKEN')  # Get file info from Telegram
+            if not token: logger.error("TELEGRAM_BOT_TOKEN not found"); return None
             
             # Get file info
             file_info_url = f"https://api.telegram.org/bot{token}/getFile"
@@ -140,30 +137,31 @@ class VoiceTranscriber:
             
             return file_response.content
             
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+        except requests.RequestException as e:
+            logger.error(f"Error downloading voice file (network): {e}")
+            return None
+        except Exception as e:
             logger.error(f"Error downloading voice file: {e}")
             return None
     
     def _save_audio_to_temp_file(self, audio_data: bytes) -> Optional[str]:
         """Save audio data to temporary file"""
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as temp_file:
-                temp_file.write(audio_data)
-                temp_file_path = temp_file.name
-            return temp_file_path
-        except (OSError, ImportError, AttributeError, ValueError) as e:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as temp_file: temp_file.write(audio_data); return temp_file.name
+        except requests.RequestException as e:
+            logger.error(f"Error saving audio to temp file (network): {e}")
+            return None
+        except Exception as e:
             logger.error(f"Error saving audio to temp file: {e}")
             return None
     
     def _detect_language_assemblyai(self, audio_path: str) -> Optional[str]:
         """Quickly detect spoken language using AssemblyAI"""
         try:
-            self._respect_rate_limit('assemblyai')
+            self._respect_rate_limit('assemblyai'); aai.settings.api_key = self.assemblyai_api_key; transcriber = aai.Transcriber()
             
-            aai.settings.api_key = self.assemblyai_api_key
-            transcriber = aai.Transcriber()
-            
-            transcript = transcriber.transcribe(
+            # Call the transcriber to warm up / check availability; we don't need the result here
+            transcriber.transcribe(
                 audio_path,
                 config=aai.TranscriptionConfig(language_detection=True)
             )
@@ -173,7 +171,10 @@ class VoiceTranscriber:
             logger.info("[INFO] AssemblyAI transcription completed, language detection will be done by translator")
             return None
                 
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+        except requests.RequestException as e:
+            logger.error(f"[ERROR] AssemblyAI language detection network error: {e}")
+            return None
+        except Exception as e:
             logger.error(f"[ERROR] AssemblyAI language detection failed: {e}")
             return None
     
@@ -214,7 +215,10 @@ class VoiceTranscriber:
                 logger.warning("[WARN] AssemblyAI returned empty transcription")
                 return None
                 
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+        except requests.RequestException as e:
+            logger.error(f"[ERROR] AssemblyAI transcription failed: {e}")
+            return None
+        except Exception as e:
             logger.error(f"[ERROR] AssemblyAI transcription failed: {e}")
             return None
     
@@ -285,7 +289,7 @@ class VoiceTranscriber:
                 logger.warning("[WARN] Google Speech returned empty transcription")
                 return None
                 
-        except (GoogleAPICallError, ResourceExhausted) as e:
+        except GoogleAPICallError as e:
             logger.error(f"[ERROR] Google Speech API failed: {e}")
             return None
         except (OSError, ImportError, AttributeError, ValueError) as e:

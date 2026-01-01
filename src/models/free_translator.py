@@ -105,7 +105,10 @@ class FreeTranslator:
                 
             return translated_text
             
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+        except requests.RequestException as e:
+            logger.error(f"Google Translate network error: {e}")
+            return None
+        except Exception as e:
             logger.error(f"Google Translate failed: {e}")
             return None
     
@@ -149,7 +152,10 @@ class FreeTranslator:
             
             return final_code
             
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+        except requests.RequestException as e:
+            logger.error(f"Language detection network error: {e}")
+            return 'unknown'
+        except Exception as e:
             logger.error(f"Language detection failed: {e}")
             return 'unknown'
     

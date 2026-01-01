@@ -14,7 +14,7 @@ except ImportError:
 
 try:
     from google.cloud import speech
-    from google.api_core.exceptions import GoogleAPICallError, ResourceExhausted
+    from google.api_core.exceptions import GoogleAPICallError
     GOOGLE_SPEECH_AVAILABLE = True
 except ImportError:
     GOOGLE_SPEECH_AVAILABLE = False
@@ -68,7 +68,7 @@ class TelegramBot:
             response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
             return response.status_code == 200
             
-        except (requests.RequestException, requests.Timeout) as e:
+        except requests.RequestException as e:
             logger.error(f"Failed to answer callback query: {e}")
             return False
     
@@ -85,7 +85,7 @@ class TelegramBot:
             response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
             return response.status_code == 200
             
-        except (requests.RequestException, requests.Timeout) as e:
+        except requests.RequestException as e:
             logger.error(f"Failed to send message: {e}")
             return False
     
@@ -109,7 +109,7 @@ class TelegramBot:
                 logger.error(f"Failed to delete message {message_id} in chat {chat_id}: {result}")
                 return False
             
-        except (requests.RequestException, requests.Timeout) as e:
+        except requests.RequestException as e:
             logger.error(f"Failed to delete message {message_id} in chat {chat_id}: {e}")
             return False
     
@@ -148,8 +148,7 @@ class TelegramBot:
             
             response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
             return response.status_code == 200
-            
-        except (requests.RequestException, requests.Timeout) as e:
+        except requests.RequestException as e:
             logger.error(f"Failed to send keyboard: {e}")
             return False
     
@@ -305,10 +304,7 @@ class TelegramBot:
             
             # Step 3: Handle case where no language pair is set
             if not has_language_pair:
-                response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
-                if detected_lang:
-                    response += f"\n\n🌍 **Detected Language:** {LanguageDetector.SUPPORTED_LANGUAGES.get(detected_lang, detected_lang)}"
-                self.send_message(chat_id, response)
+                self._send_transcription_only(chat_id, user_name, transcription, detected_lang)
                 return
             
             # Step 4: Determine target language based on detected language and language pair
@@ -316,11 +312,7 @@ class TelegramBot:
             if not target_lang:
                 # Detected language is not in the pair, show transcription only
                 logger.warning(f"Probably cound't detect language correctly from user {user_name}, sending transcription only")
-                response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
-                if detected_lang:
-                    response += f"\n\n🌍 **Detected Language:** {LanguageDetector.SUPPORTED_LANGUAGES.get(detected_lang, detected_lang)}"
-                response += "\n\n💡 **Tip:** Use /setpair to configure languages for automatic translation."
-                self.send_message(chat_id, response)
+                self._send_transcription_only(chat_id, user_name, transcription, detected_lang, tip=True)
                 return
             
             # Step 5: Don't translate if already in target language
@@ -334,29 +326,15 @@ class TelegramBot:
             translated = self.translator.translate_text(transcription, target_lang, detected_lang)
             
             if translated and translated != transcription:
-                self.update_user_stats(user_id)
-                
-                # Store the translation
-                message_id = message.get('message_id')
-                if message_id:
-                    self.db.store_message_translation(
-                        chat_id, message_id, user_id, transcription, translated,
-                        detected_lang, target_lang
-                    )
-                
-                # Use same format as text messages
-                response = f"🎤 *Voice Translation* ({detected_lang} → {target_lang})\n\n"
-                response += f"👤 **{user_name}:**\n"
-                response += f"_{transcription}_\n\n"
-                response += "🔄 **Translation:**\n"
-                response += f"_{translated}_"
-                
-                logger.info(f"Voice translation successful, sending formatted response for chat {chat_id}")
-                self.send_message(chat_id, response)
+                self._handle_successful_voice_translation(chat_id, message, user_id, user_name, transcription, translated, detected_lang, target_lang)
             else:
                 self._send_translation_error(chat_id, user_name, transcription)
                 
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+        except requests.RequestException as e:
+            logger.error(f"Error processing voice message (network): {e}")
+            error_msg = f"❌ *Voice processing error*\n\n👤 **{user_name}:**\n⚠️ **Error:** An unexpected error occurred while processing your voice message."
+            self.send_message(chat_id, error_msg)
+        except Exception as e:
             logger.error(f"Error processing voice message: {e}")
             error_msg = f"❌ *Voice processing error*\n\n👤 **{user_name}:**\n⚠️ **Error:** An unexpected error occurred while processing your voice message."
             self.send_message(chat_id, error_msg)
@@ -412,6 +390,37 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"[ERROR] Failed to create Google credentials: {e}")
         return None
+
+    def _send_transcription_only(self, chat_id: int, user_name: str, transcription: str, detected_lang: Optional[str] = None, tip: bool = False) -> None:
+        """Send transcription-only response used in several branches."""
+        response = f"🎤 *Voice Transcription*\n\n👤 **{user_name}:**\n📝 **Transcription:**\n_{transcription}_"
+        if detected_lang:
+            response += f"\n\n🌍 **Detected Language:** {LanguageDetector.SUPPORTED_LANGUAGES.get(detected_lang, detected_lang)}"
+        if tip:
+            response += "\n\n💡 **Tip:** Use /setpair to configure languages for automatic translation."
+        self.send_message(chat_id, response)
+
+    def _handle_successful_voice_translation(self, chat_id: int, message: Dict, user_id: int, user_name: str, transcription: str, translated: str, detected_lang: str, target_lang: str) -> None:
+        """Handle side-effects and send message for a successful voice translation."""
+        self.update_user_stats(user_id)
+
+        # Store the translation
+        message_id = message.get('message_id')
+        if message_id:
+            self.db.store_message_translation(
+                chat_id, message_id, user_id, transcription, translated,
+                detected_lang, target_lang
+            )
+
+        # Build and send response
+        response = f"🎤 *Voice Translation* ({detected_lang} → {target_lang})\n\n"
+        response += f"👤 **{user_name}:**\n"
+        response += f"_{transcription}_\n\n"
+        response += "🔄 **Translation:**\n"
+        response += f"_{translated}_"
+
+        logger.info(f"Voice translation successful, sending formatted response for chat {chat_id}")
+        self.send_message(chat_id, response)
     
     def _create_speech_config(self, language_code: Optional[str]):
         """Create Google Speech recognition configuration"""
@@ -742,7 +751,12 @@ class TelegramBot:
                 self.send_message(chat_id, invalid_state_message)
                 self.db.clear_language_selection_state(chat_id)
                 
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+        except requests.RequestException as e:
+            logger.error(f"Error in language selection for chat {chat_id} (network): {e}")
+            self.send_message(chat_id, error_message)
+            # Clean up the state to prevent further issues
+            self.db.clear_language_selection_state(chat_id)
+        except Exception as e:
             logger.error(f"Error in language selection for chat {chat_id}: {e}")
             self.send_message(chat_id, error_message)
             # Clean up the state to prevent further issues
@@ -789,7 +803,11 @@ class TelegramBot:
             logger.info(f"First language selected for chat {chat_id}: {selected_lang_code}")
             self.send_keyboard(chat_id, text, keyboard)
             
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+        except requests.RequestException as e:
+            logger.error(f"Error in first language selection for chat {chat_id} (network): {e}")
+            self.send_message(chat_id, error_message)
+            self.db.clear_language_selection_state(chat_id)
+        except Exception as e:
             logger.error(f"Error in first language selection for chat {chat_id}: {e}")
             self.send_message(chat_id, error_message)
             self.db.clear_language_selection_state(chat_id)
@@ -829,7 +847,11 @@ class TelegramBot:
             self.db.clear_language_selection_state(chat_id)
             logger.info(f"Language selection completed for chat {chat_id}")
             
-        except (OSError, ImportError, AttributeError, ValueError, requests.RequestException) as e:
+        except requests.RequestException as e:
+            logger.error(f"Error in second language selection for chat {chat_id} (network): {e}")
+            self.send_message(chat_id, error_message)
+            self.db.clear_language_selection_state(chat_id)
+        except Exception as e:
             logger.error(f"Error in second language selection for chat {chat_id}: {e}")
             self.send_message(chat_id, error_message)
             self.db.clear_language_selection_state(chat_id)
