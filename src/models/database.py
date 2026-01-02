@@ -12,11 +12,12 @@ Base = declarative_base()
 class UserPreferences(Base):
     """Database model for user language preferences"""
     __tablename__ = 'user_preferences'
-    
+
     id = Column(Integer, primary_key=True)
     chat_id = Column(BigInteger, unique=True, nullable=False)
     language1 = Column(String(10), nullable=False)
     language2 = Column(String(10), nullable=False)
+    chat_mode = Column(String(20), default='translation', nullable=False)  # 'translation' or 'chat'
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -176,13 +177,13 @@ class DatabaseManager:
             raise RuntimeError("DatabaseManager not initialized")
         return cls.session_local()
     
-    def get_user_preferences(self, chat_id: int) -> tuple[str, str] | None:
-        """Get language preferences for a chat"""
+    def get_user_preferences(self, chat_id: int) -> tuple[str, str, str] | None:
+        """Get language preferences and chat mode for a chat"""
         with self.get_session() as session:
             try:
                 prefs = session.query(UserPreferences).filter(UserPreferences.chat_id == chat_id).first()
                 if prefs:
-                    return (prefs.language1, prefs.language2)
+                    return (prefs.language1, prefs.language2, prefs.chat_mode)
                 return None
             except (OSError, ImportError, AttributeError, ValueError) as e:
                 logger.error(f"Error getting preferences for chat {chat_id}: {e}")
@@ -265,10 +266,56 @@ class DatabaseManager:
         with self.get_session() as session:
             try:
                 prefs = session.query(UserPreferences).all()
-                return {p.chat_id: (p.language1, p.language2) for p in prefs}
+                return {p.chat_id: (p.language1, p.language2, p.chat_mode) for p in prefs}
             except (OSError, ImportError, AttributeError, ValueError) as e:
                 logger.error(f"Error getting all preferences: {e}")
                 return {}
+
+    def get_chat_mode(self, chat_id: int) -> str:
+        """Get chat mode for a chat ('translation' or 'chat')"""
+        with self.get_session() as session:
+            try:
+                prefs = session.query(UserPreferences).filter(UserPreferences.chat_id == chat_id).first()
+                if prefs:
+                    return prefs.chat_mode
+                return 'translation'  # Default mode
+            except (OSError, ImportError, AttributeError, ValueError) as e:
+                logger.error(f"Error getting chat mode for chat {chat_id}: {e}")
+                return 'translation'
+
+    def set_chat_mode(self, chat_id: int, mode: str) -> bool:
+        """Set chat mode for a chat ('translation' or 'chat')"""
+        if mode not in ['translation', 'chat']:
+            logger.error(f"Invalid chat mode: {mode}")
+            return False
+
+        with self.get_session() as session:
+            try:
+                # Check if preferences already exist
+                existing = session.query(UserPreferences).filter(UserPreferences.chat_id == chat_id).first()
+
+                if existing:
+                    # Update existing preferences
+                    existing.chat_mode = mode
+                    existing.updated_at = datetime.now(timezone.utc)
+                else:
+                    # Create new preferences with default languages
+                    new_prefs = UserPreferences(
+                        chat_id=chat_id,
+                        language1='en',
+                        language2='ru',
+                        chat_mode=mode
+                    )
+                    session.add(new_prefs)
+
+                session.commit()
+                logger.info(f"Set chat mode for chat {chat_id} to: {mode}")
+                return True
+
+            except (OSError, ImportError, AttributeError, ValueError) as e:
+                session.rollback()
+                logger.error(f"Error setting chat mode for chat {chat_id}: {e}")
+                return False
     
     def get_language_selection_state(self, chat_id: int) -> dict | None:
         """Get language selection state for a chat"""

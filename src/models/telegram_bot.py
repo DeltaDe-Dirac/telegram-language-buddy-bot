@@ -157,8 +157,8 @@ class TelegramBot:
         logger.info(f"Retrieving language preferences for chat {chat_id}")
         prefs = self.db.get_user_preferences(chat_id)
         if prefs:
-            logger.info(f"Chat {chat_id} has language pair {prefs[0]}-{prefs[1]}")
-            return prefs
+            logger.info(f"Chat {chat_id} has language pair {prefs[0]}-{prefs[1]}, mode: {prefs[2]}")
+            return (prefs[0], prefs[1])  # Return only the language pair, ignore mode
         else:
             # Default fallback
             default_pair = ('en', 'ru')
@@ -526,6 +526,14 @@ class TelegramBot:
     
     def _handle_text_message(self, message: Dict, chat_id: int, user_id: int, user_name: str, text: str) -> None:
         """Handle regular text message translation"""
+        # Check if chat is in chat mode (no translation)
+        chat_mode = self.db.get_chat_mode(chat_id)
+        if chat_mode == 'chat':
+            logger.info(f"Chat {chat_id} is in chat mode, skipping translation")
+            # In chat mode, just acknowledge the message without translating
+            self.send_message(chat_id, f"💬 *Chat Mode*\n\n👤 **{user_name}:**\n{text}")
+            return
+
         # Get user language pair
         lang1, lang2 = self.get_user_language_pair(chat_id)
         logger.info(f"Chat {chat_id} has language pair {lang1}-{lang2}")
@@ -675,6 +683,7 @@ class TelegramBot:
             self.send_message(chat_id, response)
             return
         
+        lang1, lang2 = self.get_user_language_pair(chat_id)
         detected_lang = self.translator.detect_language(text, allowed_langs=(lang1, lang2))
         response += self._build_new_translation_response(
             text, detected_lang, target_lang, chat_id, message_id, user_id
@@ -1015,7 +1024,7 @@ _Need help? Just ask!_ 💬
             logger.info(f"Chat {chat_id} has language pair {current_pair[0]}-{current_pair[1]}")
             lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
             lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])
-            
+
             response = f"""
 📊 *Your Translation Stats:*
 
@@ -1026,6 +1035,25 @@ _Need help? Just ask!_ 💬
 _Keep translating to increase your stats!_ 🚀
             """
             self.send_message(chat_id, response)
-            
+
+        elif cmd == '/chatmode':
+            # Toggle between translation and chat modes
+            current_mode = self.db.get_chat_mode(chat_id)
+            if current_mode == 'translation':
+                # Switch to chat mode
+                if self.db.set_chat_mode(chat_id, 'chat'):
+                    self.send_message(chat_id, "💬 *Chat Mode Enabled*\n\nI will no longer translate messages. Send me any text and I'll just respond as a regular chatbot.\n\nUse `/chatmode` again to return to translation mode.")
+                else:
+                    self.send_message(chat_id, "❌ Failed to change chat mode. Please try again.")
+            else:
+                # Switch to translation mode
+                if self.db.set_chat_mode(chat_id, 'translation'):
+                    current_pair = self.get_user_language_pair(chat_id)
+                    lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
+                    lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])
+                    self.send_message(chat_id, f"🔄 *Translation Mode Enabled*\n\nI will now translate messages between {lang1_name} and {lang2_name}.\n\nUse `/chatmode` again to switch to chat mode.")
+                else:
+                    self.send_message(chat_id, "❌ Failed to change chat mode. Please try again.")
+
         else:
-            self.send_message(chat_id, "❓ Unknown command. Use /help to see available commands.") 
+            self.send_message(chat_id, "❓ Unknown command. Use /help to see available commands.")

@@ -355,12 +355,123 @@ class TestTelegramBot(unittest.TestCase):
         """Test handling unknown command"""
         self.bot._handle_command(12345, 67890, "/unknown")
         mock_send.assert_called_once()
-        
+
         # Verify error message
         call_args = mock_send.call_args
         message_text = call_args[0][1]  # First positional argument is text
         self.assertIn("Unknown command", message_text)
         self.assertIn("/help", message_text)
+
+    @patch.object(TelegramBot, 'send_message')
+    def test_handle_command_chatmode_translation_to_chat(self, mock_send):
+        """Test /chatmode command switching from translation to chat mode"""
+        # Mock database to return 'translation' mode initially
+        self.bot.db.get_chat_mode = lambda chat_id: 'translation'
+        self.bot.db.set_chat_mode = MagicMock(return_value=True)
+
+        # Mock get_user_language_pair to return language pair
+        self.bot.get_user_language_pair = lambda chat_id: ('en', 'ru')
+
+        self.bot._handle_command(12345, 67890, "/chatmode")
+        mock_send.assert_called_once()
+
+        # Verify chat mode was set to 'chat'
+        self.bot.db.set_chat_mode.assert_called_once_with(12345, 'chat')
+
+        # Verify message contains chat mode enabled text
+        call_args = mock_send.call_args
+        message_text = call_args[0][1]
+        self.assertIn("Chat Mode Enabled", message_text)
+        self.assertIn("no longer translate", message_text)
+
+    @patch.object(TelegramBot, 'send_message')
+    def test_handle_command_chatmode_chat_to_translation(self, mock_send):
+        """Test /chatmode command switching from chat to translation mode"""
+        # Mock database to return 'chat' mode initially
+        self.bot.db.get_chat_mode = lambda chat_id: 'chat'
+        self.bot.db.set_chat_mode = MagicMock(return_value=True)
+
+        # Mock get_user_language_pair to return language pair
+        self.bot.get_user_language_pair = lambda chat_id: ('en', 'ru')
+
+        self.bot._handle_command(12345, 67890, "/chatmode")
+        mock_send.assert_called_once()
+
+        # Verify chat mode was set to 'translation'
+        self.bot.db.set_chat_mode.assert_called_once_with(12345, 'translation')
+
+        # Verify message contains translation mode enabled text
+        call_args = mock_send.call_args
+        message_text = call_args[0][1]
+        self.assertIn("Translation Mode Enabled", message_text)
+        self.assertIn("English ↔ Russian", message_text)
+
+    @patch.object(TelegramBot, 'send_message')
+    def test_handle_command_chatmode_error(self, mock_send):
+        """Test /chatmode command with database error"""
+        # Mock database to return error
+        self.bot.db.get_chat_mode = lambda chat_id: 'translation'
+        self.bot.db.set_chat_mode = MagicMock(return_value=False)
+
+        self.bot._handle_command(12345, 67890, "/chatmode")
+        mock_send.assert_called_once()
+
+        # Verify error message
+        call_args = mock_send.call_args
+        message_text = call_args[0][1]
+        self.assertIn("Failed to change chat mode", message_text)
+
+    @patch.object(TelegramBot, 'send_message')
+    def test_handle_text_message_chat_mode(self, mock_send):
+        """Test text message handling in chat mode"""
+        # Mock chat mode to be 'chat'
+        self.bot.db.get_chat_mode = lambda chat_id: 'chat'
+
+        message = {
+            "chat": {"id": 12345},
+            "from": {"id": 67890, "first_name": "TestUser"},
+            "text": "Hello world"
+        }
+
+        self.bot._handle_text_message(message, 12345, 67890, "TestUser", "Hello world")
+
+        # Verify message was sent (acknowledged without translation)
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        message_text = call_args[0][1]
+        self.assertIn("💬 Chat Mode", message_text)
+        self.assertIn("👤 TestUser:", message_text)
+        self.assertIn("Hello world", message_text)
+
+    @patch.object(TelegramBot, 'send_message')
+    def test_handle_text_message_translation_mode(self, mock_send):
+        """Test text message handling in translation mode"""
+        # Mock chat mode to be 'translation'
+        self.bot.db.get_chat_mode = lambda chat_id: 'translation'
+
+        # Mock language pair and translator
+        self.bot.get_user_language_pair = lambda chat_id: ('en', 'ru')
+        self.bot.translator.detect_language = lambda text, **kwargs: 'en'
+        self.bot.translator.translate_text = lambda text, target, source=None: "Привет мир" if target == 'ru' else text
+        self.bot.update_user_stats = MagicMock()
+
+        message = {
+            "chat": {"id": 12345},
+            "from": {"id": 67890, "first_name": "TestUser"},
+            "text": "Hello world",
+            "message_id": 999
+        }
+
+        with patch.object(self.bot.db, 'store_message_translation'):
+            self.bot._handle_text_message(message, 12345, 67890, "TestUser", "Hello world")
+
+        # Verify translation was processed
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        message_text = call_args[0][1]
+        self.assertIn("🔤 Translation", message_text)
+        self.assertIn("Hello world", message_text)
+        self.assertIn("Привет мир", message_text)
 
 
 if __name__ == '__main__':

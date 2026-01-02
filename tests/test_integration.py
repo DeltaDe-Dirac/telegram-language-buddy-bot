@@ -60,7 +60,7 @@ class TestIntegration(unittest.TestCase):
         
         # Verify in database directly
         db_result = self.db_manager.get_user_preferences(chat_id)
-        self.assertEqual(db_result, (lang1, lang2))
+        self.assertEqual(db_result, (lang1, lang2, 'translation'))  # Database returns (lang1, lang2, mode)
     
     @patch.dict('os.environ', {'TELEGRAM_BOT_TOKEN': 'test_token_123'})
     def test_bot_translator_integration(self):
@@ -299,7 +299,7 @@ class TestIntegration(unittest.TestCase):
         # Verify each user is present
         for chat_id, lang1, lang2 in users:
             self.assertIn(chat_id, all_prefs)
-            self.assertEqual(all_prefs[chat_id], (lang1, lang2))
+            self.assertEqual(all_prefs[chat_id], (lang1, lang2, 'translation'))  # Database returns (lang1, lang2, mode)
 
 
 if __name__ == '__main__':

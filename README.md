@@ -206,9 +206,36 @@ The bot automatically uses PostgreSQL in production:
 
 - `/start` - Welcome message and instructions
 - `/setpair` - Set your preferred language pair (two-step process)
+- `/chatmode` - Toggle between translation mode and standard chat mode
 - `/stats` - View translation statistics
 - `/help` - Show available commands
 - `/languages` - List all supported languages
+
+## 💬 Chat Mode
+
+The bot supports a **Chat Mode** that disables translation and acts as a standard chatbot:
+
+- **Translation Mode (Default)**: Automatically translates messages between your configured language pair
+- **Chat Mode**: Messages are not translated - the bot simply acknowledges them
+
+### How to Use Chat Mode
+
+1. **Enable Chat Mode**: Send `/chatmode` to switch to chat mode
+2. **Send Messages**: Any text messages will be acknowledged but not translated
+3. **Return to Translation Mode**: Send `/chatmode` again to resume translations
+
+### Chat Mode Benefits
+
+- **Standard Chat Experience**: Use the bot for regular conversations without translation
+- **Group Chats**: Disable translation temporarily in group chats
+- **Testing**: Test bot responses without translation interference
+- **Privacy**: Send messages that shouldn't be translated
+
+### Mode Persistence
+
+- Chat mode settings are saved per chat
+- Each group/private chat remembers its mode independently
+- Mode persists across bot restarts
 
 ## 🎤 Voice Message Support
 
