@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import os
 import requests
 from typing import Optional, Dict, Tuple
 import unicodedata
@@ -54,23 +55,33 @@ class FreeTranslator:
         }
     
     def translate_text(self, text: str, target_lang: str, source_lang: str = 'auto') -> Optional[str]:
-        """Translate text using Google Translate"""
-        
+        """Translate text using free Google Translate first, then fall back to OpenAI if needed.
+        Returns the translated string or an error placeholder.
+        """
         if not text or not isinstance(text, str):
             logger.error("Invalid text input for translation")
             return "❌ Translation failed - please try again"
-        
+
         logger.info(f"Translating text: {text[:50]}... from {source_lang} to {target_lang}")
-        
+
+        # Primary attempt: free Google Translate
         result = self._translate_googletrans(text, target_lang, source_lang)
-        
-        if result is None:
-            logger.error("❌ Translation failed")
-            return "❌ Translation failed - please try again"
+
+        # Determine if fallback is needed: None or unchanged (Google sometimes returns original)
+        need_fallback = result is None or (result.strip() == text.strip())
+
+        if need_fallback:
+            logger.info("Google Translate failed or returned unchanged text – attempting OpenAI fallback")
+            openai_result = self._translate_openai(text, target_lang, source_lang)
+            if openai_result:
+                logger.info("✅ OpenAI translation succeeded")
+                return openai_result
+            else:
+                logger.error("❌ OpenAI fallback also failed")
+                return "❌ Translation failed - please try again"
         else:
-            logger.info("✅ Translation completed successfully")
-            
-        return result
+            logger.info("✅ Translation completed successfully via Google")
+            return result
     
     def _translate_googletrans(self, text: str, target_lang: str, source_lang: str) -> Optional[str]:
         """Translate using Google Translate (free library)"""
@@ -116,6 +127,49 @@ class FreeTranslator:
             return None
         except Exception as e:
             logger.error(f"Google Translate failed: {e}")
+            return None
+
+    def _translate_openai(self, text: str, target_lang: str, source_lang: str) -> Optional[str]:
+        """Fallback translation using OpenAI Chat Completion.
+        Returns translated text or None on failure.
+        """
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            logger.warning("OpenAI API key not set – cannot perform fallback translation")
+            return None
+
+        # Build a simple prompt for translation
+        system = "You are a precise translator. Translate the given text to the target language without adding commentary."
+        user = f"Translate from {source_lang} to {target_lang}:\n\n{text}"
+        payload = {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user}
+            ],
+            "temperature": 0.0,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            resp = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            translation = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            if translation:
+                return translation
+            else:
+                logger.warning("OpenAI returned empty translation")
+                return None
+        except requests.RequestException as e:
+            logger.error(f"OpenAI request failed: {e}")
             return None
     
     def detect_language(self, text: str, allowed_langs: Optional[Tuple[str, str]] = None) -> str:
