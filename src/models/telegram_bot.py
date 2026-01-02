@@ -52,9 +52,40 @@ class TelegramBot:
         
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
-        
+
+        # Register bot commands with Telegram
+        self._register_bot_commands()
+
         logger.info("TelegramBot initialized with database and voice transcription")
-    
+
+    def _register_bot_commands(self) -> None:
+        """Register bot commands with Telegram to show them in the menu"""
+        try:
+            commands = [
+                {"command": "start", "description": "Welcome message and bot introduction"},
+                {"command": "help", "description": "Show help information and commands"},
+                {"command": "setpair", "description": "Choose your language pair for translation"},
+                {"command": "languages", "description": "List all supported languages"},
+                {"command": "stats", "description": "View your translation statistics"},
+                {"command": "chatmode", "description": "Toggle between translation and chat modes"}
+            ]
+
+            url = f"{self.base_url}/setMyCommands"
+            payload = {
+                "commands": commands,
+                "scope": {"type": "all_private_chats"},  # Show in all private chats
+                "language_code": ""  # Default language
+            }
+
+            response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+            if response.status_code == 200:
+                logger.info("Successfully registered bot commands with Telegram")
+            else:
+                logger.warning(f"Failed to register bot commands: {response.text}")
+
+        except requests.RequestException as e:
+            logger.error(f"Error registering bot commands: {e}")
+
     def answer_callback_query(self, callback_query_id: str, text: str = None) -> bool:
         """Answer callback query to remove loading state"""
         try:
@@ -949,6 +980,7 @@ I help you communicate between two languages! Set up your language pair once and
 
 *Commands:*
 /setpair - Choose your language pair
+/chatmode - Toggle between translation and chat modes
 /stats - View your translation statistics
 /help - Show help information
 /languages - List all supported languages
@@ -980,6 +1012,7 @@ _Just send me a message to get started!_ 🚀
 *Commands:*
 • `/start` - Welcome message
 • `/setpair` - Choose your language pair
+• `/chatmode` - Toggle between translation and chat modes
 • `/stats` - View your translation statistics
 • `/languages` - List all supported languages
 • `/help` - Show this help
