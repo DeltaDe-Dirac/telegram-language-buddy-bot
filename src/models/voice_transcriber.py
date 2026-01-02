@@ -30,6 +30,15 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def _mask_key(key: Optional[str]) -> str:
+    if not key:
+        return '<unset>'
+    try:
+        return key[:6] + '...' + key[-4:]
+    except Exception:
+        return '<masked>'
+
 class VoiceTranscriber:
     """Voice transcription service with AssemblyAI and Google Speech-to-Text as primary services"""
     
@@ -185,11 +194,25 @@ class VoiceTranscriber:
             
             aai.settings.api_key = self.assemblyai_api_key
             transcriber = aai.Transcriber()
-            
+
+            # Log request metadata (mask API key)
+            try:
+                masked = _mask_key(self.assemblyai_api_key)
+                logger.info(f"[INFO] AssemblyAI transcription request: audio_path={audio_path} masked_api_key={masked}")
+                logger.debug("[REQUEST_DATA] AssemblyAI config: language_detection=True")
+            except Exception:
+                logger.debug("[DEBUG] Failed to log AssemblyAI request metadata")
+
             transcript = transcriber.transcribe(
                 audio_path,
                 config=aai.TranscriptionConfig(language_detection=True)
             )
+
+            # Log raw transcript object for debugging (repr to avoid SDK serialization issues)
+            try:
+                logger.debug(f"[RAW_RESPONSE] AssemblyAI transcript repr: {repr(transcript)[:2000]}")
+            except Exception:
+                pass
             
             if transcript.text:
                 # AssemblyAI provides confidence scores for each word
@@ -248,9 +271,12 @@ class VoiceTranscriber:
             
             with open(audio_path, "rb") as f:
                 content = f.read()
-            
+
+            logger.info(f"[INFO] Google Speech request: audio_path={audio_path} content_bytes={len(content)}")
+            logger.debug("[REQUEST_DATA] Google config: encoding=OGG_OPUS, sample_rate_hertz=48000, enable_automatic_punctuation=True")
+
             audio = speech.RecognitionAudio(content=content)
-            
+
             # Use auto language detection
             config = speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
@@ -258,9 +284,15 @@ class VoiceTranscriber:
                 language_code="en-US",  # Default, will auto-detect
                 enable_automatic_punctuation=True
             )
-            
+
             response = client.recognize(config=config, audio=audio)
-            
+
+            # Log raw response for debugging
+            try:
+                logger.debug(f"[RAW_RESPONSE] Google Speech: {response}")
+            except Exception:
+                logger.debug("[DEBUG] Could not stringify Google Speech response")
+
             if response.results:
                 # Google provides confidence scores for each result
                 total_confidence = 0
@@ -276,14 +308,17 @@ class VoiceTranscriber:
                 
                 transcript = " ".join(transcript_parts)
                 confidence = total_confidence / total_results if total_results > 0 else 0.8
-                
+
                 logger.info(f"[SUCCESS] Google Speech transcription: '{transcript[:50]}...' (confidence: {confidence:.3f})")
-                
+
+                raw_resp = {'results': [{'transcript': r.alternatives[0].transcript, 'confidence': r.alternatives[0].confidence} for r in response.results if r.alternatives]}
+                logger.debug(f"[RAW_RESPONSE_SUMMARY] Google Speech: {raw_resp}")
+
                 return TranscriptionResult(
                     text=transcript.strip(),
                     service='google_speech',
                     confidence=confidence,
-                    raw_response={'results': [{'transcript': r.alternatives[0].transcript, 'confidence': r.alternatives[0].confidence} for r in response.results if r.alternatives]}
+                    raw_response=raw_resp
                 )
             else:
                 logger.warning("[WARN] Google Speech returned empty transcription")
@@ -310,9 +345,10 @@ class VoiceTranscriber:
                                   confidence_threshold: float, all_results: list) -> Optional[TranscriptionResult]:
         """Try a transcription service and add result if successful"""
         if not self.services_available.get(service_name, False):
+            logger.info(f"[SKIP] {service_name} not available")
             return None
         
-        logger.info(f"[INFO] Trying {service_name} transcription...")
+        logger.info(f"[TRY] {service_name} transcription on {temp_audio_path} (threshold={confidence_threshold})")
         try:
             if service_name == 'whisper':
                 result = self.whisper_transcriber.transcribe_audio(temp_audio_path)
@@ -325,14 +361,21 @@ class VoiceTranscriber:
             
             if result:
                 all_results.append(result)
-                logger.info(f"[INFO] {service_name} confidence: {result.confidence:.3f}")
+                logger.info(f"[SUCCESS] {service_name} confidence: {result.confidence:.3f}")
+                # Log a short preview of the transcription and raw response for debugging
+                try:
+                    raw = getattr(result, 'raw_response', None)
+                    logger.debug(f"[RAW_RESPONSE] {service_name}: {raw}")
+                except Exception:
+                    pass
+                logger.debug(f"[TRANSCRIPT_PREVIEW] {service_name}: {result.text[:200]!r}")
                 
                 # If service has high confidence, we can stop here
                 if result.is_high_confidence(confidence_threshold):
-                    logger.info(f"[INFO] {service_name} achieved high confidence ({result.confidence:.3f}), using result")
+                    logger.info(f"[HIT] {service_name} reached high confidence ({result.confidence:.3f}), using result")
                     return result
         except Exception as e:
-            logger.warning(f"[WARN] {service_name} failed: {e}")
+            logger.exception(f"[WARN] {service_name} failed with exception")
         
         return None
     

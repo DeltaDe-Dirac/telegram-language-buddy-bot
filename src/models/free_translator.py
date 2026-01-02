@@ -89,12 +89,18 @@ class FreeTranslator:
             else:
                 result = asyncio.run(translator.translate(clean_text, src=source_lang, dest=target_lang))
             
+            # Extract translated text and debug metadata
             translated_text = result.text
+            try:
+                detected_src = getattr(result, 'src', None)
+                logger.debug(f"Googletrans result src={detected_src}, raw={result.__dict__}")
+            except Exception:
+                logger.debug("Googletrans result: could not access result metadata")
             logger.info(f"Google Translate result: {translated_text[:100]}...")
             
             # Check if translation is meaningful
             if not translated_text or translated_text == clean_text:
-                logger.warning("Google Translate returned empty or unchanged text")
+                logger.warning(f"Google Translate returned empty or unchanged text; cleaned='{clean_text}' translated='{translated_text}'")
                 return None
             
             # Check if translation was cut off (common issue with googletrans)

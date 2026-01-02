@@ -8,16 +8,35 @@ from .transcription_result import TranscriptionResult, TranscriptionQualityAnaly
 
 logger = logging.getLogger(__name__)
 
+
+def _mask_key(key: Optional[str]) -> str:
+    if not key:
+        return '<unset>'
+    try:
+        return key[:6] + '...' + key[-4:]
+    except Exception:
+        return '<masked>'
+
 class WhisperTranscriber:
     """Whisper API transcription service"""
     
     def __init__(self):
-        self.api_key = os.getenv('OPENAI_API_KEY')
+        # Sanitize OPENAI_API_KEY from environment (strip whitespace and surrounding quotes)
+        raw_key = os.getenv('OPENAI_API_KEY') or ''
+        sanitized = raw_key.strip().strip('"').strip("'")
+        self.api_key = sanitized
         self.base_url = "https://api.openai.com/v1/audio/transcriptions"
         self.available = bool(self.api_key)
-        
+
         if not self.available:
-            logger.warning("Whisper API not available - OPENAI_API_KEY not set")
+            logger.warning("Whisper API not available - OPENAI_API_KEY not set or empty after sanitization")
+        else:
+            # Log masked key presence for debugging (do not log full key)
+            try:
+                masked = _mask_key(self.api_key)
+            except Exception:
+                masked = 'set'
+            logger.info(f"Whisper API key loaded (masked)={masked}")
     
     def transcribe_audio(self, audio_path: str) -> Optional[TranscriptionResult]:
         """Transcribe audio using Whisper API with confidence scoring"""
@@ -36,7 +55,21 @@ class WhisperTranscriber:
                 headers = {
                     'Authorization': f'Bearer {self.api_key}'
                 }
-                
+                # Log request metadata (mask sensitive fields)
+                try:
+                    file_size = None
+                    try:
+                        file_size = audio_file.seek(0, 2) or audio_file.tell()
+                        audio_file.seek(0)
+                    except Exception:
+                        file_size = None
+
+                    masked_auth = _mask_key(self.api_key)
+                    logger.info(f"[INFO] Sending audio to Whisper API (size={file_size}) masked_auth={masked_auth}")
+                    logger.debug(f"[REQUEST_DATA] Whisper data keys: {list(data.keys())}")
+                except Exception:
+                    logger.debug("[DEBUG] Failed to log Whisper request metadata")
+
                 logger.info("[INFO] Sending audio to Whisper API...")
                 response = requests.post(
                     self.base_url,
@@ -46,8 +79,11 @@ class WhisperTranscriber:
                     timeout=30
                 )
                 
+                logger.debug(f"[RESPONSE] Whisper status={response.status_code} headers={dict(response.headers)}")
+
                 if response.status_code == 200:
                     result = response.json()
+                    logger.debug(f"[RESPONSE_BODY] Whisper: {result}")
                     transcript = result.get('text', '').strip()
                     
                     if transcript:
