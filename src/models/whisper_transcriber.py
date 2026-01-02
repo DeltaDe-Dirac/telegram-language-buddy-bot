@@ -8,16 +8,32 @@ from .transcription_result import TranscriptionResult, TranscriptionQualityAnaly
 
 logger = logging.getLogger(__name__)
 
+
 class WhisperTranscriber:
     """Whisper API transcription service"""
     
     def __init__(self):
-        self.api_key = os.getenv('OPENAI_API_KEY')
+        # Sanitize OPENAI_API_KEY from environment (strip whitespace and surrounding quotes)
+        raw_key = os.getenv('OPENAI_API_KEY') or ''
+        sanitized = raw_key.strip().strip('"').strip("'")
+        self.api_key = sanitized
         self.base_url = "https://api.openai.com/v1/audio/transcriptions"
         self.available = bool(self.api_key)
-        
+
+        # PRODUCTION DEBUG: Log key status
+        logger.info(f"[DEBUG] OPENAI_API_KEY raw exists: {bool(raw_key)}")
+        logger.info(f"[DEBUG] OPENAI_API_KEY sanitized length: {len(sanitized)}")
+        logger.info(f"[DEBUG] Whisper available: {self.available}")
+
         if not self.available:
-            logger.warning("Whisper API not available - OPENAI_API_KEY not set")
+            logger.warning("Whisper API not available - OPENAI_API_KEY not set or empty after sanitization")
+        else:
+            # Log masked key presence for debugging (do not log full key)
+            try:
+                masked = self.api_key[:6] + '...' + self.api_key[-4:]
+            except Exception:
+                masked = 'set'
+            logger.info(f"Whisper API key loaded (masked)={masked}")
     
     def transcribe_audio(self, audio_path: str) -> Optional[TranscriptionResult]:
         """Transcribe audio using Whisper API with confidence scoring"""
@@ -36,7 +52,6 @@ class WhisperTranscriber:
                 headers = {
                     'Authorization': f'Bearer {self.api_key}'
                 }
-                
                 logger.info("[INFO] Sending audio to Whisper API...")
                 response = requests.post(
                     self.base_url,
@@ -45,7 +60,6 @@ class WhisperTranscriber:
                     headers=headers,
                     timeout=30
                 )
-                
                 if response.status_code == 200:
                     result = response.json()
                     transcript = result.get('text', '').strip()
