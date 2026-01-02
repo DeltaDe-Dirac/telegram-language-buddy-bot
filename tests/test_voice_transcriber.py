@@ -39,17 +39,17 @@ class TestVoiceTranscriber:
         assert transcriber.services_available['assemblyai'] == False
         assert transcriber.services_available['google_speech'] == False
     
-    @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
-    @patch('src.models.voice_transcriber.GOOGLE_SPEECH_AVAILABLE', True)
-    def test_init_with_api_keys(self, mock_assemblyai_available, mock_google_available):
+    def test_init_with_api_keys(self):
         """Test initialization with API keys"""
-        os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = '{"type": "service_account", "project_id": "test"}'
+        with patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True), \
+             patch('src.models.voice_transcriber.GOOGLE_SPEECH_AVAILABLE', True):
+            os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = '{"type": "service_account", "project_id": "test"}'
 
-        transcriber = VoiceTranscriber()
+            transcriber = VoiceTranscriber()
 
-        assert transcriber.services_available['assemblyai'] == True
-        assert transcriber.services_available['google_speech'] == True
+            assert transcriber.services_available['assemblyai'] == True
+            assert transcriber.services_available['google_speech'] == True
     
     @patch('requests.post')
     @patch('requests.get')
