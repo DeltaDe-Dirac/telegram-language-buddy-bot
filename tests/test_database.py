@@ -56,7 +56,7 @@ class TestDatabaseManager(unittest.TestCase):
         # Get preferences
         result = self.db_manager.get_user_preferences(chat_id)
         self.assertIsNotNone(result)
-        self.assertEqual(result, (lang1, lang2))
+        self.assertEqual(result, (lang1, lang2, 'translation'))
     
     def test_set_user_preferences_update(self):
         """Test updating existing user preferences"""
@@ -73,7 +73,7 @@ class TestDatabaseManager(unittest.TestCase):
         
         # Verify update
         result = self.db_manager.get_user_preferences(chat_id)
-        self.assertEqual(result, (new_lang1, new_lang2))
+        self.assertEqual(result, (new_lang1, new_lang2, 'translation'))
     
     def test_set_user_preferences_case_insensitive(self):
         """Test that language codes are stored in lowercase"""
@@ -85,8 +85,8 @@ class TestDatabaseManager(unittest.TestCase):
         
         # Get preferences
         result = self.db_manager.get_user_preferences(chat_id)
-        self.assertEqual(result, ("en", "es"))
-    
+        self.assertEqual(result, ("en", "es", 'translation'))
+
     def test_get_user_stats_nonexistent(self):
         """Test getting stats for non-existent user"""
         result = self.db_manager.get_user_stats(12345)
@@ -139,9 +139,9 @@ class TestDatabaseManager(unittest.TestCase):
         
         # Verify results
         self.assertEqual(len(result), 3)
-        self.assertEqual(result[1], ("en", "es"))
-        self.assertEqual(result[2], ("fr", "de"))
-        self.assertEqual(result[3], ("ru", "zh"))
+        self.assertEqual(result[1], ("en", "es", "translation"))
+        self.assertEqual(result[2], ("fr", "de", "translation"))
+        self.assertEqual(result[3], ("ru", "zh", "translation"))
     
     def test_language_selection_state_workflow(self):
         """Test complete language selection state workflow"""
@@ -262,7 +262,7 @@ class TestDatabaseManager(unittest.TestCase):
         # Verify all users have correct preferences
         for chat_id, lang1, lang2 in users:
             result = self.db_manager.get_user_preferences(chat_id)
-            self.assertEqual(result, (lang1, lang2))
+            self.assertEqual(result, (lang1, lang2, 'translation'))  # Database returns (lang1, lang2, mode)
     
     def test_user_stats_increment(self):
         """Test that user stats increment correctly"""
@@ -333,7 +333,7 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertTrue(success)
         
         result = self.db_manager.get_user_preferences(chat_id)
-        self.assertEqual(result, ("en", "es"))
+        self.assertEqual(result, ("en", "es", "translation"))
     
     def test_negative_user_ids(self):
         """Test handling of negative user IDs"""
@@ -419,7 +419,7 @@ class TestDatabaseManager(unittest.TestCase):
         
         # Verify the data is stored correctly
         result = self.db_manager.get_user_preferences(chat_id)
-        self.assertEqual(result, ("en", "es"))
+        self.assertEqual(result, ("en", "es", "translation"))
 
 
 if __name__ == '__main__':

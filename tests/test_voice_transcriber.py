@@ -28,13 +28,15 @@ class TestVoiceTranscriber:
         assert transcriber.services_available['assemblyai'] == False
         assert transcriber.services_available['google_speech'] == False
     
-    def test_init_with_api_keys(self):
+    @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
+    @patch('src.models.voice_transcriber.GOOGLE_SPEECH_AVAILABLE', True)
+    def test_init_with_api_keys(self, mock_google, mock_assemblyai):
         """Test initialization with API keys"""
         os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
-        os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = '{"type": "service_account", "project_id": "test", "private_key_id": "test", "private_key": "test", "client_email": "test@test.com", "client_id": "test", "auth_uri": "https://accounts.google.com/o/oauth2/auth", "token_uri": "https://oauth2.googleapis.com/token", "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs", "client_x509_cert_url": "test"}'
-        
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = '{"type": "service_account", "project_id": "test"}'
+
         transcriber = VoiceTranscriber()
-        
+
         assert transcriber.services_available['assemblyai'] == True
         assert transcriber.services_available['google_speech'] == True
     
@@ -73,7 +75,7 @@ class TestVoiceTranscriber:
         assert result is None
     
     @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
-    @patch('src.models.voice_transcriber.aai')
+    @patch('src.models.voice_transcriber.assemblyai')
     def test_transcribe_with_assemblyai_success(self, mock_aai):
         """Test successful AssemblyAI transcription"""
         # Mock AssemblyAI response
@@ -95,7 +97,7 @@ class TestVoiceTranscriber:
         assert 0.0 <= result.confidence <= 1.0
     
     @patch('src.models.voice_transcriber.ASSEMBLYAI_AVAILABLE', True)
-    @patch('src.models.voice_transcriber.aai')
+    @patch('src.models.voice_transcriber.assemblyai')
     def test_transcribe_with_assemblyai_failure(self, mock_aai):
         """Test AssemblyAI transcription failure"""
         mock_aai.Transcriber.return_value.transcribe.side_effect = ValueError("API Error")
@@ -162,21 +164,23 @@ class TestVoiceTranscriber:
     def test_transcribe_voice_message_success(self, mock_transcribe, mock_download):
         """Test successful voice message transcription"""
         from src.models.transcription_result import TranscriptionResult
-        
+
         mock_download.return_value = b'fake_audio_data'
         mock_transcribe.return_value = TranscriptionResult(
             text="Hello world",
             service="assemblyai",
             confidence=0.8
         )
-        
+
+        # Mock the services_available to make assemblyai available
         os.environ['ASSEMBLYAI_API_KEY'] = 'test_key'
         transcriber = VoiceTranscriber()
-        
+        transcriber.services_available['assemblyai'] = True
+
         with patch('tempfile.NamedTemporaryFile') as mock_temp:
             mock_temp.return_value.__enter__.return_value.name = '/tmp/test.ogg'
             result = transcriber.transcribe_voice_message('test_file_id')
-        
+
         assert result == "Hello world"
     
     @patch('src.models.voice_transcriber.VoiceTranscriber._download_voice_file')

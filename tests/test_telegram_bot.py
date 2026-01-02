@@ -231,10 +231,10 @@ class TestTelegramBot(unittest.TestCase):
     def test_get_user_language_pair_with_preferences(self):
         """Test getting user language pair with existing preferences"""
         # Mock the database method directly on the instance
-        self.bot.db.get_user_preferences = lambda chat_id: ("en", "es")
-        
+        self.bot.db.get_user_preferences = lambda chat_id: ("en", "es", "translation")
+
         result = self.bot.get_user_language_pair(12345)
-        
+
         self.assertEqual(result, ("en", "es"))
     
     def test_get_user_language_pair_default(self):
@@ -404,7 +404,7 @@ class TestTelegramBot(unittest.TestCase):
         call_args = mock_send.call_args
         message_text = call_args[0][1]
         self.assertIn("Translation Mode Enabled", message_text)
-        self.assertIn("English ↔ Russian", message_text)
+        self.assertIn("translate messages between English and Russian", message_text)
 
     @patch.object(TelegramBot, 'send_message')
     def test_handle_command_chatmode_error(self, mock_send):
@@ -439,8 +439,8 @@ class TestTelegramBot(unittest.TestCase):
         mock_send.assert_called_once()
         call_args = mock_send.call_args
         message_text = call_args[0][1]
-        self.assertIn("💬 Chat Mode", message_text)
-        self.assertIn("👤 TestUser:", message_text)
+        self.assertIn("💬 *Chat Mode*", message_text)
+        self.assertIn("👤 **TestUser:**", message_text)
         self.assertIn("Hello world", message_text)
 
     @patch.object(TelegramBot, 'send_message')
@@ -469,9 +469,9 @@ class TestTelegramBot(unittest.TestCase):
         mock_send.assert_called_once()
         call_args = mock_send.call_args
         message_text = call_args[0][1]
-        self.assertIn("🔤 Translation", message_text)
-        self.assertIn("Hello world", message_text)
-        self.assertIn("Привет мир", message_text)
+        self.assertIn("🔤 *Translation*", message_text)
+        self.assertIn("_Hello world_", message_text)
+        self.assertIn("_Привет мир_", message_text)
 
 
 if __name__ == '__main__':
