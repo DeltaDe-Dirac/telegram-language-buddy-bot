@@ -31,14 +31,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def _mask_key(key: Optional[str]) -> str:
-    if not key:
-        return '<unset>'
-    try:
-        return key[:6] + '...' + key[-4:]
-    except Exception:
-        return '<masked>'
-
 class VoiceTranscriber:
     """Voice transcription service with AssemblyAI and Google Speech-to-Text as primary services"""
     
@@ -195,24 +187,10 @@ class VoiceTranscriber:
             aai.settings.api_key = self.assemblyai_api_key
             transcriber = aai.Transcriber()
 
-            # Log request metadata (mask API key)
-            try:
-                masked = _mask_key(self.assemblyai_api_key)
-                logger.info(f"[INFO] AssemblyAI transcription request: audio_path={audio_path} masked_api_key={masked}")
-                logger.debug("[REQUEST_DATA] AssemblyAI config: language_detection=True")
-            except Exception:
-                logger.debug("[DEBUG] Failed to log AssemblyAI request metadata")
-
             transcript = transcriber.transcribe(
                 audio_path,
                 config=aai.TranscriptionConfig(language_detection=True)
             )
-
-            # Log raw transcript object for debugging (repr to avoid SDK serialization issues)
-            try:
-                logger.debug(f"[RAW_RESPONSE] AssemblyAI transcript repr: {repr(transcript)[:2000]}")
-            except Exception:
-                pass
             
             if transcript.text:
                 # AssemblyAI provides confidence scores for each word
@@ -272,9 +250,6 @@ class VoiceTranscriber:
             with open(audio_path, "rb") as f:
                 content = f.read()
 
-            logger.info(f"[INFO] Google Speech request: audio_path={audio_path} content_bytes={len(content)}")
-            logger.debug("[REQUEST_DATA] Google config: encoding=OGG_OPUS, sample_rate_hertz=48000, enable_automatic_punctuation=True")
-
             audio = speech.RecognitionAudio(content=content)
 
             # Use auto language detection
@@ -286,12 +261,6 @@ class VoiceTranscriber:
             )
 
             response = client.recognize(config=config, audio=audio)
-
-            # Log raw response for debugging
-            try:
-                logger.debug(f"[RAW_RESPONSE] Google Speech: {response}")
-            except Exception:
-                logger.debug("[DEBUG] Could not stringify Google Speech response")
 
             if response.results:
                 # Google provides confidence scores for each result
@@ -311,14 +280,11 @@ class VoiceTranscriber:
 
                 logger.info(f"[SUCCESS] Google Speech transcription: '{transcript[:50]}...' (confidence: {confidence:.3f})")
 
-                raw_resp = {'results': [{'transcript': r.alternatives[0].transcript, 'confidence': r.alternatives[0].confidence} for r in response.results if r.alternatives]}
-                logger.debug(f"[RAW_RESPONSE_SUMMARY] Google Speech: {raw_resp}")
-
                 return TranscriptionResult(
                     text=transcript.strip(),
                     service='google_speech',
                     confidence=confidence,
-                    raw_response=raw_resp
+                    raw_response={'results': [{'transcript': r.alternatives[0].transcript, 'confidence': r.alternatives[0].confidence} for r in response.results if r.alternatives]}
                 )
             else:
                 logger.warning("[WARN] Google Speech returned empty transcription")
@@ -362,7 +328,7 @@ class VoiceTranscriber:
             if result:
                 all_results.append(result)
                 logger.info(f"[SUCCESS] {service_name} confidence: {result.confidence:.3f}")
-                # Log a short preview of the transcription and raw response for debugging
+                # Short preview for debugging
                 try:
                     raw = getattr(result, 'raw_response', None)
                     logger.debug(f"[RAW_RESPONSE] {service_name}: {raw}")
@@ -375,7 +341,7 @@ class VoiceTranscriber:
                     logger.info(f"[HIT] {service_name} reached high confidence ({result.confidence:.3f}), using result")
                     return result
         except Exception as e:
-            logger.exception(f"[WARN] {service_name} failed with exception")
+            logger.warning(f"[WARN] {service_name} failed: {e}")
         
         return None
     
