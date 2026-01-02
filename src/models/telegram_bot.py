@@ -106,16 +106,22 @@ class TelegramBot:
     def send_message(self, chat_id: int, text: str, parse_mode: str = 'Markdown') -> bool:
         """Send message to Telegram chat"""
         try:
+            # Check if chat is in chat mode - don't send any messages in chat mode
+            chat_mode = self.db.get_chat_mode(chat_id)
+            if chat_mode == 'chat':
+                logger.info(f"Chat {chat_id} is in chat mode, suppressing message send")
+                return True  # Return True to indicate "success" but don't actually send
+
             url = f"{self.base_url}/sendMessage"
             payload = {
                 'chat_id': chat_id,
                 'text': text,
                 'parse_mode': parse_mode
             }
-            
+
             response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
             return response.status_code == 200
-            
+
         except requests.RequestException as e:
             logger.error(f"Failed to send message: {e}")
             return False
@@ -1083,20 +1089,14 @@ _Keep translating to increase your stats!_ 🚀
             self.send_message(chat_id, response)
 
         elif cmd == '/chatmode':
-            # Toggle between translation and chat modes - send confirmation, then be silent
+            # Toggle between translation and chat modes - COMPLETELY SILENT
             current_mode = self.db.get_chat_mode(chat_id)
             if current_mode == 'translation':
-                # Switch to chat mode - send confirmation
-                if self.db.set_chat_mode(chat_id, 'chat'):
-                    self.send_message(chat_id, "💬 *Chat Mode Activated*\n\n🚫 *Translations are now ignored!*\nAll messages will be completely ignored - no responses or translations.")
-                else:
-                    self.send_message(chat_id, "❌ Failed to enable chat mode.")
+                # Switch to chat mode - completely silent
+                self.db.set_chat_mode(chat_id, 'chat')
             else:
-                # Switch to translation mode - send confirmation
-                if self.db.set_chat_mode(chat_id, 'translation'):
-                    self.send_message(chat_id, "🔄 *Translation Mode Re-Enabled*\n\n✅ *Translations are back!*\nMessages will now be translated normally.")
-                else:
-                    self.send_message(chat_id, "❌ Failed to re-enable translation mode.")
+                # Switch to translation mode - completely silent
+                self.db.set_chat_mode(chat_id, 'translation')
 
         else:
             self.send_message(chat_id, "❓ Unknown command. Use /help to see available commands.")
