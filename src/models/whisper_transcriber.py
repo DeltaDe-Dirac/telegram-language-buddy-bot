@@ -20,6 +20,11 @@ class WhisperTranscriber:
         self.base_url = "https://api.openai.com/v1/audio/transcriptions"
         self.available = bool(self.api_key)
 
+        # PRODUCTION DEBUG: Log key status
+        logger.info(f"[DEBUG] OPENAI_API_KEY raw exists: {bool(raw_key)}")
+        logger.info(f"[DEBUG] OPENAI_API_KEY sanitized length: {len(sanitized)}")
+        logger.info(f"[DEBUG] Whisper available: {self.available}")
+
         if not self.available:
             logger.warning("Whisper API not available - OPENAI_API_KEY not set or empty after sanitization")
         else:

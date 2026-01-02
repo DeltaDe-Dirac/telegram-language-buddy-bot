@@ -83,16 +83,25 @@ class VoiceTranscriber:
         """Check which transcription services are available"""
         # Check if Google credentials are available (JSON only)
         google_creds_available = bool(self.google_credentials_json)
-        
+
+        # PRODUCTION DEBUG: Log individual service components
+        logger.info(f"[DEBUG] ASSEMBLYAI_API_KEY exists: {bool(self.assemblyai_api_key)}")
+        logger.info(f"[DEBUG] ASSEMBLYAI_AVAILABLE: {ASSEMBLYAI_AVAILABLE}")
+        logger.info(f"[DEBUG] GOOGLE_APPLICATION_CREDENTIALS_JSON exists: {bool(self.google_credentials_json)}")
+        logger.info(f"[DEBUG] GOOGLE_SPEECH_AVAILABLE: {GOOGLE_SPEECH_AVAILABLE}")
+        logger.info(f"[DEBUG] whisper_transcriber exists: {bool(self.whisper_transcriber)}")
+        if self.whisper_transcriber:
+            logger.info(f"[DEBUG] whisper_transcriber.available: {self.whisper_transcriber.available}")
+
         services = {
             'assemblyai': bool(self.assemblyai_api_key and ASSEMBLYAI_AVAILABLE),
             'google_speech': bool(google_creds_available and GOOGLE_SPEECH_AVAILABLE),
             'whisper': bool(self.whisper_transcriber and self.whisper_transcriber.available),
         }
-        
+
         # Log service availability for debugging
         logger.info(f"Voice transcription services available: {services}")
-        
+
         return services
     
     def _respect_rate_limit(self, service: str) -> None:
@@ -307,10 +316,15 @@ class VoiceTranscriber:
         result = self.transcribe_voice_message_with_confidence(file_id)
         return result.text if result else None
     
-    def _try_transcription_service(self, service_name: str, temp_audio_path: str, 
+    def _try_transcription_service(self, service_name: str, temp_audio_path: str,
                                   confidence_threshold: float, all_results: list) -> Optional[TranscriptionResult]:
         """Try a transcription service and add result if successful"""
-        if not self.services_available.get(service_name, False):
+        # PRODUCTION DEBUG: Log the skip decision details
+        service_available = self.services_available.get(service_name, False)
+        logger.info(f"[DEBUG] Checking {service_name} availability: {service_available}")
+        logger.info(f"[DEBUG] services_available dict: {self.services_available}")
+
+        if not service_available:
             logger.info(f"[SKIP] {service_name} not available")
             return None
         
