@@ -1,18 +1,20 @@
 # Telegram Language Buddy Bot
 
-A smart translation bot that provides instant language conversion using Google Translate. Supports 40+ languages with persistent user preferences and database storage.
+A comprehensive multilingual translation bot that provides instant text and voice message translation using Google Translate and multiple AI transcription services. Features persistent user preferences, intelligent fallback systems, and supports 40+ languages with full database persistence.
 
 ## 🌟 Features
 
-- **Multi-language Support**: 40+ languages including Hebrew, Russian, Chinese, Arabic, and more
-- **Smart Language Detection**: Automatically detects input language
-- **Voice Message Transcription**: Transcribe and translate voice messages with multiple free model fallbacks
-- **Persistent Preferences**: User language pairs are saved in database
-- **Interactive Setup**: Easy `/setpair` command for language configuration
-- **Statistics Tracking**: Monitor translation usage and user activity
-- **Database Persistence**: SQLite for local development, PostgreSQL for production
-- **Webhook Support**: Handles Telegram webhooks for real-time messaging
-- **REST API**: Additional endpoints for manual translation and statistics
+- **Multi-language Support**: 40+ languages including Hebrew, Russian, Chinese, Arabic, Thai, and more
+- **Smart Language Detection**: Automatically detects input language using multiple detection methods
+- **Advanced Voice Transcription**: Multi-service transcription with intelligent fallback (Whisper, AssemblyAI, Google Speech-to-Text)
+- **Persistent Preferences**: User language pairs saved in database with automatic schema management
+- **Interactive Setup**: Two-step language pair configuration with inline keyboards
+- **Statistics Tracking**: Comprehensive usage analytics and user activity monitoring
+- **Database Persistence**: SQLite for local development, PostgreSQL for production with automatic migrations
+- **Webhook Support**: Robust Telegram webhook handling with error recovery
+- **REST API**: Complete REST API with health checks, manual translation, and service status endpoints
+- **Quality Assurance**: SonarQube integration, comprehensive test suite with pytest and coverage reporting
+- **Deployment Ready**: Multiple deployment configurations for Railway, Render, Fly.io, and Heroku
 
 ## 🚀 Quick Start
 
@@ -108,43 +110,63 @@ Create a `.env` file in the project root (you can copy from `.env.example` as a 
 
 ```env
 # Required variables
-TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 FLASK_ENV=development
-DATABASE_URL=sqlite:///bot_data.db
-SONAR_TOKEN=your_sonarqube_token_here
 PORT=5000
+DATABASE_URL=sqlite:///bot_data.db
 
-# Optional: Voice transcription API keys
+# Voice Transcription API Keys (at least one required for voice features)
 ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
-GOOGLE_APPLICATION_CREDENTIALS=path/to/your/google-credentials.json
+GOOGLE_APPLICATION_CREDENTIALS_JSON=your_google_credentials_json_here
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional: Legacy/premium translation services
+HUGGINGFACE_API_TOKEN=your_huggingface_api_token_here
+
+# Quality assurance and development
+SONAR_TOKEN=your_sonarqube_token_here
+SONAR_TOKEN_VS_CODE=your_sonarqube_vs_code_token_here
+RAILWAY_TOKEN=your_railway_token_here
 ```
 
 Or set them directly in your shell:
 
 **Windows:**
 ```cmd
-set TELEGRAM_BOT_TOKEN=your_bot_token_here
+set TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 set FLASK_ENV=development
 set PORT=5000
+set DATABASE_URL=sqlite:///bot_data.db
+set OPENAI_API_KEY=your_openai_api_key_here
+set ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
 ```
 
 **Linux/macOS:**
 ```bash
-export TELEGRAM_BOT_TOKEN=your_bot_token_here
+export TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 export FLASK_ENV=development
 export PORT=5000
+export DATABASE_URL=sqlite:///bot_data.db
+export OPENAI_API_KEY=your_openai_api_key_here
+export ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
 ```
 
 **Required Environment Variables:**
 - `TELEGRAM_BOT_TOKEN` - Your Telegram bot token from @BotFather
-- `FLASK_ENV` - Set to 'development' for local work, 'production' for Heroku
-- `DATABASE_URL` - Database connection string (auto-configured)
-- `PORT` - Server port (auto-configured by Heroku)
-- `SONAR_TOKEN` - SonarQube authentication token for code quality analysis
+- `FLASK_ENV` - Set to 'development' for local work, 'production' for deployment
+- `PORT` - Server port (default: 5000, auto-configured by deployment platforms)
+- `DATABASE_URL` - Database connection string (SQLite for local, PostgreSQL for production)
 
-**Optional Voice Transcription API Keys:**
-- `ASSEMBLYAI_API_KEY` - AssemblyAI API key for voice transcription (recommended)
-- `GOOGLE_APPLICATION_CREDENTIALS` - Google Cloud credentials for Speech-to-Text
+**Voice Transcription API Keys (at least one required):**
+- `OPENAI_API_KEY` - OpenAI API key for Whisper transcription (recommended primary)
+- `ASSEMBLYAI_API_KEY` - AssemblyAI API key for high-accuracy transcription
+- `GOOGLE_APPLICATION_CREDENTIALS_JSON` - Google Cloud Speech-to-Text credentials
+
+**Optional Environment Variables:**
+- `HUGGINGFACE_API_TOKEN` - Hugging Face API token for premium translations (legacy)
+- `SONAR_TOKEN` - SonarQube token for code quality analysis
+- `SONAR_TOKEN_VS_CODE` - VS Code SonarQube extension token
+- `RAILWAY_TOKEN` - Railway CLI token for MCP server integration
 
 ## 🔧 Database
 
@@ -207,8 +229,9 @@ The bot now supports voice message transcription and translation! Simply send a 
 
 ### Supported Voice Transcription Services
 
-1. **AssemblyAI** (Primary) - High accuracy, excellent language detection
-2. **Google Speech-to-Text** (Primary) - Enterprise-grade transcription
+1. **Whisper (OpenAI)** (Primary) - State-of-the-art transcription with excellent accuracy
+2. **AssemblyAI** (Primary) - High accuracy, excellent language detection
+3. **Google Speech-to-Text** (Primary) - Enterprise-grade transcription with broad language support
 
 ### Setting Up Voice Transcription
 
@@ -255,19 +278,37 @@ The bot supports 40+ languages including:
 telegram-language-buddy-bot/
 ├── src/
 │   ├── controllers/
-│   │   └── bot_controller.py    # Flask routes and webhook handling
+│   │   └── bot_controller.py      # Flask routes and webhook handling
 │   ├── models/
-│   │   ├── database.py          # Database models and manager
-│   │   ├── free_translator.py   # Google Translate integration
-│   │   ├── language_detector.py # Language detection utilities
-│   │   ├── voice_transcriber.py # Voice message transcription
-│   │   └── telegram_bot.py      # Main bot logic
-│   └── main.py                  # Flask application entry point
+│   │   ├── database.py            # Database models and manager
+│   │   ├── free_translator.py     # Google Translate integration
+│   │   ├── language_detector.py   # Language detection utilities
+│   │   ├── telegram_bot.py        # Main Telegram bot logic
+│   │   ├── transcription_result.py # Transcription result data models
+│   │   ├── voice_transcriber.py   # Multi-service voice transcription
+│   │   └── whisper_transcriber.py # OpenAI Whisper integration
+│   └── main.py                    # Flask application entry point
 ├── tests/
-│   └── test_voice_transcriber.py # Voice transcription tests
-├── requirements.txt             # Python dependencies
-├── Procfile                     # Heroku deployment configuration
-└── README.md                    # This file
+│   ├── conftest.py                # Pytest configuration and fixtures
+│   ├── fixtures/                  # Test audio files and fixtures
+│   │   ├── russian_voice.mp3/.ogg
+│   │   └── thai_voice.mp3/.ogg
+│   ├── mock_googletrans.py        # Google Translate mocking utilities
+│   ├── test_*.py                  # Comprehensive test suite
+│   └── README.md                  # Test documentation
+├── scripts/
+│   ├── generate_russian_tts.py    # Russian TTS generation for testing
+│   ├── generate_thai_tts.py       # Thai TTS generation for testing
+│   └── run_integration.py         # Integration test runner
+├── sonar-scanner-5.0.1.3006-windows/  # SonarQube scanner
+├── requirements.txt               # Python dependencies
+├── pytest.ini                     # Pytest configuration
+├── sonar-project.properties       # SonarQube configuration
+├── railway.json                   # Railway deployment config
+├── render.yaml                    # Render deployment config
+├── Procfile                       # Heroku deployment config
+├── .env.example                   # Environment variables template
+└── README.md                      # This file
 ```
 
 ## 🌐 API Endpoints
@@ -306,9 +347,10 @@ Railway offers a free tier with $5/month credit, perfect for small bots!
    - Add:
      - `TELEGRAM_BOT_TOKEN=your_bot_token_here`
      - `FLASK_ENV=production`
-   - Optional voice transcription keys:
-     - `ASSEMBLYAI_API_KEY=your_key`
-     - `GOOGLE_APPLICATION_CREDENTIALS=path/to/credentials.json`
+     - `OPENAI_API_KEY=your_openai_api_key_here` (for Whisper transcription)
+   - Optional additional voice transcription keys:
+     - `ASSEMBLYAI_API_KEY=your_assemblyai_key_here`
+     - `GOOGLE_APPLICATION_CREDENTIALS_JSON=your_google_credentials_json_here`
 
 5. **Deploy**
    - Railway automatically deploys on every push to main
@@ -424,6 +466,69 @@ For local development with webhooks, you can use ngrok:
         -d '{"url": "https://your-ngrok-url.ngrok.io/webhook"}'
    ```
 
+## 🧪 Testing & Quality Assurance
+
+### Test Suite
+
+The project includes a comprehensive test suite with multiple testing frameworks:
+
+```bash
+# Run all tests
+pytest
+
+# Run integration tests only
+pytest -m integration
+
+# Run with coverage report
+pytest --cov=src --cov-report=html
+
+# Run specific test file
+pytest tests/test_voice_transcriber.py
+```
+
+### Test Categories
+
+- **Unit Tests**: Core functionality testing
+- **Integration Tests**: End-to-end voice transcription workflows
+- **Database Tests**: Data persistence and schema validation
+- **API Tests**: REST endpoint validation
+
+### Quality Assurance Tools
+
+#### SonarQube Integration
+
+The project includes SonarQube configuration for code quality analysis:
+
+```bash
+# Run SonarQube analysis
+sonar-scanner
+```
+
+Configuration includes:
+- Code coverage reporting
+- Security vulnerability scanning
+- Code smell detection
+- Maintainability metrics
+
+#### Test Fixtures
+
+Test audio files are provided for voice transcription testing:
+- `tests/fixtures/russian_voice.mp3/.ogg` - Russian language samples
+- `tests/fixtures/thai_voice.mp3/.ogg` - Thai language samples
+
+### Scripts
+
+Utility scripts for development and testing:
+
+```bash
+# Generate test audio files
+python scripts/generate_russian_tts.py
+python scripts/generate_thai_tts.py
+
+# Run integration tests
+python scripts/run_integration.py
+```
+
 ## 🔍 Troubleshooting
 
 ### Common Issues
@@ -432,7 +537,7 @@ For local development with webhooks, you can use ngrok:
    ```bash
    # ❌ Wrong - will cause import errors
    python src/main.py
-   
+
    # ✅ Correct - run as module
    python -m src.main
    ```
@@ -452,12 +557,16 @@ For local development with webhooks, you can use ngrok:
    - Check if the language is supported in `src/models/language_detector.py`
    - Verify the language code mapping in `src/models/free_translator.py`
 
-5. **Heroku deployment fails**
+5. **Voice transcription not working**
+   - Verify API keys are set: `ASSEMBLYAI_API_KEY` or `OPENAI_API_KEY`
+   - Check service availability in logs for debug messages
+
+6. **Heroku deployment fails**
    ```bash
    heroku logs --tail
    ```
 
-6. **Database connection issues**
+7. **Database connection issues**
    - Check if PostgreSQL addon is active: `heroku addons`
    - Verify DATABASE_URL is set: `heroku config`
    - View database logs: `heroku logs --tail`
@@ -469,6 +578,18 @@ Enable debug logging by setting the log level:
 ```python
 import logging
 logging.basicConfig(level=logging.DEBUG)
+```
+
+### Production Debugging
+
+For production issues, check Railway/Render logs or enable additional debug logging:
+
+```python
+# In production, logs show service availability
+[DEBUG] OPENAI_API_KEY raw exists: True
+[DEBUG] Whisper available: True
+[DEBUG] whisper_transcriber.available: True
+Voice transcription services available: {'whisper': True, 'assemblyai': True, 'google_speech': False}
 ```
 
 ## 🤝 Contributing
