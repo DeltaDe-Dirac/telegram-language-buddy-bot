@@ -1,12 +1,16 @@
 import os
 import logging
+import sys
 from flask import Flask
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-from .controllers import home, webhook, set_webhook, manual_translate, get_stats, get_voice_status
+# Add the src directory to the Python path for imports
+sys.path.insert(0, os.path.dirname(__file__))
+
+from controllers import home, webhook, set_webhook, manual_translate, get_stats, get_voice_status
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
