@@ -560,9 +560,8 @@ class TelegramBot:
         # Check if chat is in chat mode (no translation)
         chat_mode = self.db.get_chat_mode(chat_id)
         if chat_mode == 'chat':
-            logger.info(f"Chat {chat_id} is in chat mode, skipping translation")
-            # In chat mode, just acknowledge the message without translating
-            self.send_message(chat_id, f"💬 *Chat Mode*\n\n👤 **{user_name}:**\n{text}")
+            logger.info(f"Chat {chat_id} is in chat mode, ignoring message completely")
+            # In chat mode, completely ignore messages - don't send any response
             return
 
         # Get user language pair
@@ -1075,7 +1074,7 @@ _Keep translating to increase your stats!_ 🚀
             if current_mode == 'translation':
                 # Switch to chat mode
                 if self.db.set_chat_mode(chat_id, 'chat'):
-                    self.send_message(chat_id, "💬 *Chat Mode Enabled*\n\nI will no longer translate messages. Send me any text and I'll just respond as a regular chatbot.\n\nUse `/chatmode` again to return to translation mode.")
+                    self.send_message(chat_id, "💬 *Chat Mode Enabled*\n\nI will completely ignore all messages. No translations or responses will be sent.\n\nUse `/chatmode` again to return to translation mode.")
                 else:
                     self.send_message(chat_id, "❌ Failed to change chat mode. Please try again.")
             else:

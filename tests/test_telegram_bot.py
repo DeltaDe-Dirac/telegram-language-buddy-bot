@@ -946,10 +946,10 @@ class TestTelegramBot(unittest.TestCase):
             self.bot.process_message(update)
             mock_handle.assert_called_once()
 
-    @patch.object(TelegramBot, 'send_message')
-    def test_handle_text_message_with_chat_mode(self, mock_send):
-        """Test text message handling in chat mode"""
-        with patch.object(self.bot.db, 'get_chat_mode', return_value='chat'):
+    def test_handle_text_message_with_chat_mode(self):
+        """Test text message handling in chat mode - should ignore completely"""
+        with patch.object(self.bot.db, 'get_chat_mode', return_value='chat'), \
+             patch.object(TelegramBot, 'send_message') as mock_send:
             message = {
                 'chat': {'id': 123},
                 'from': {'id': 456, 'first_name': 'Test'},
@@ -958,9 +958,8 @@ class TestTelegramBot(unittest.TestCase):
 
             self.bot._handle_text_message(message, 123, 456, 'Test', 'Hello in chat mode')
 
-            mock_send.assert_called_once()
-            call_args = mock_send.call_args[0]
-            self.assertIn('Chat Mode', call_args[1])
+            # In chat mode, bot should completely ignore messages and not send any response
+            mock_send.assert_not_called()
 
     @patch.object(TelegramBot, 'send_message')
     def test_handle_text_message_translation_failure(self, mock_send):
