@@ -1074,18 +1074,18 @@ _Keep translating to increase your stats!_ 🚀
             if current_mode == 'translation':
                 # Switch to chat mode
                 if self.db.set_chat_mode(chat_id, 'chat'):
-                    self.send_message(chat_id, "💬 *Chat Mode Enabled*\n\nI will completely ignore all messages. No translations or responses will be sent.\n\nUse `/chatmode` again to return to translation mode.")
+                    self.send_message(chat_id, "💬 *Chat Mode Enabled*\n\n🚫 *Translations are now ignored!*\nAll messages will be completely ignored - no responses or translations.\n\nUse `/chatmode` again to re-enable translations.")
                 else:
-                    self.send_message(chat_id, "❌ Failed to change chat mode. Please try again.")
+                    self.send_message(chat_id, "❌ Failed to enable chat mode. Please try again.")
             else:
                 # Switch to translation mode
                 if self.db.set_chat_mode(chat_id, 'translation'):
                     current_pair = self.get_user_language_pair(chat_id)
                     lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
                     lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])
-                    self.send_message(chat_id, f"🔄 *Translation Mode Enabled*\n\nI will now translate messages between {lang1_name} and {lang2_name}.\n\nUse `/chatmode` again to switch to chat mode.")
+                    self.send_message(chat_id, f"🔄 *Translation Mode Re-Enabled*\n\n✅ *Translations are back!*\nI will now translate messages between {lang1_name} and {lang2_name}.\n\nUse `/chatmode` again to disable translations.")
                 else:
-                    self.send_message(chat_id, "❌ Failed to change chat mode. Please try again.")
+                    self.send_message(chat_id, "❌ Failed to re-enable translation mode. Please try again.")
 
         else:
             self.send_message(chat_id, "❓ Unknown command. Use /help to see available commands.")
