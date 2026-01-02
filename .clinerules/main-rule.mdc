@@ -1,0 +1,52 @@
+---
+alwaysApply: true
+
+CURSOR DEVELOPMENT RULE
+
+CORE DEVELOPMENT PRINCIPLES
+
+1. CODE REUSABILITY & DRY PRINCIPLE
+Always scan existing codebase for reusable functionality before writing new code. If existing functions are close but not exact matches, refactor them into more generic, parameterized versions. Never duplicate logic that already exists in the codebase.
+
+2. CODING STANDARDS COMPLIANCE
+Follow enterprise-grade coding conventions from Google Style Guides, Facebook/Meta coding standards, and Amazon development guidelines. Maintain consistent naming conventions, formatting, and architectural patterns.
+
+3. NON-BREAKING CHANGES
+Ensure all new functionality preserves existing behavior. When modifying existing code, maintain all current interfaces and contracts. Verify that existing features continue to work as expected.
+
+4. ARCHITECTURE & DESIGN
+Apply SOLID principles: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, and Dependency Inversion. Use appropriate design patterns for scalable solutions. Maintain clear boundaries between business logic, data access, and presentation layers.
+
+5. PERFORMANCE & SECURITY
+Evaluate impact on system performance including time/space complexity, database queries, API calls. Follow OWASP guidelines, validate inputs, sanitize outputs, use secure authentication/authorization. Handle connections, memory, and external resources properly.
+
+6. CODE QUALITY ASSURANCE
+Run SonarQube static analysis and resolve all critical/major issues before commit. Fix code smells, security vulnerabilities, and maintainability issues identified by Sonar.
+
+7. TESTING REQUIREMENTS
+Write and execute appropriate tests (unit/integration) for all new functionality. Ensure new code meets minimum coverage thresholds. Run full test suite to confirm no regressions.
+
+8. DOCUMENTATION & COMMUNICATION
+Write clear, readable code with meaningful variable/function names. Update relevant documentation including API docs, README, architecture diagrams. Document breaking changes, new dependencies, or significant architectural decisions.
+
+9. DEPENDENCY & ENVIRONMENT MANAGEMENT
+Minimize dependencies and avoid unnecessary external libraries. Prefer standard library solutions. Ensure new dependencies don't conflict with existing ones. Consider deployment, scaling, and operational requirements.
+
+10. ERROR HANDLING & MONITORING
+Implement proper exception handling with meaningful error messages. Add appropriate logging for debugging and monitoring without performance impact. Design features to fail gracefully without affecting the entire system.
+
+PRE-COMMIT CHECKLIST
+- Existing functionality reused where possible
+- Code follows Google/Facebook/Amazon standards
+- SOLID principles applied
+- No breaking changes introduced
+- Performance impact assessed
+- Security considerations addressed
+- SonarQube issues resolved
+- Tests written and passing with adequate coverage
+- Full test suite executed successfully
+- Documentation updated
+- Error handling implemented
+- Logging added appropriately
+
+---

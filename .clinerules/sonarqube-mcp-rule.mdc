@@ -1,0 +1,11 @@
+# Agent Rules for this Project
+
+## SonarQube Analysis
+- We use a local SonarQube instance for code quality. 
+- ALWAYS use the `sonarqube` MCP server tools to check for issues before marking a task as "done."
+- If I ask to "fix bugs," start by calling `get_sonar_issues` to see what needs work.
+
+## Production Monitoring (Railway)
+- Our production environment is on Railway.
+- Use the `railway` MCP server to fetch logs or check service status.
+- NEVER guess the status of production; use the `get-logs` tool from the MCP server.

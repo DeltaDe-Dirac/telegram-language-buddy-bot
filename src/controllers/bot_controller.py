@@ -55,13 +55,13 @@ def webhook():
     try:
         update = request.get_json()
         logger.info(f"Received update: {json.dumps(update, indent=2)}")
-        
+
         get_bot().process_message(update)
         return jsonify({"ok": True})
-        
-    except (ValueError, TypeError, KeyError) as e:
+
+    except Exception as e:
         logger.error(f"Webhook error: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": str(e)}), 400
 
 def set_webhook():
     """Set Telegram webhook URL"""
@@ -86,15 +86,20 @@ def manual_translate():
     try:
         data = request.get_json()
         text = data.get('text')
+
+        # Validate input
+        if not text or not isinstance(text, str) or not text.strip():
+            return jsonify({"error": "Text is required and must be a non-empty string"}), 400
+
         detected_lang = get_bot().translator.detect_language(text)
         lang1 = data.get('lang1', detected_lang)
         lang2 = data.get('lang2', 'en')
 
         if detected_lang != lang1:
             logger.warning(f"Detected language is {detected_lang}, but requested to translate from {lang1}")
-        
+
         translated = get_bot().translator.translate_text(text, lang2, lang1)
-        
+
         return jsonify({
             "original": text,
             "translated": translated,
@@ -102,8 +107,8 @@ def manual_translate():
             "target_language": lang2,
             "language_pair": f"{lang1} ↔ {lang2}"
         })
-        
-    except (ValueError, KeyError, TypeError) as e:
+
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 def get_stats():
@@ -142,7 +147,7 @@ def get_stats():
             "database_url": bot.db.engine.url
         })
         
-    except (AttributeError, KeyError, TypeError) as e:
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 def get_voice_status():
@@ -158,5 +163,5 @@ def get_voice_status():
         
         return jsonify(status)
         
-    except (AttributeError, KeyError, TypeError) as e:
-        return jsonify({"error": str(e)}), 500 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
