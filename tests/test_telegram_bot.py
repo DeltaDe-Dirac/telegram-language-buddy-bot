@@ -681,38 +681,33 @@ class TestTelegramBot(unittest.TestCase):
 
     @patch.object(TelegramBot, 'send_message')
     def test_handle_command_chatmode_toggle_to_chat(self, mock_send):
-        """Test /chatmode command toggle to chat mode - should show translations ignored message"""
+        """Test /chatmode command toggle to chat mode - sends confirmation message"""
         with patch.object(self.bot.db, 'get_chat_mode', return_value='translation'), \
              patch.object(self.bot.db, 'set_chat_mode', return_value=True):
 
             self.bot._handle_command(123, 456, '/chatmode')
 
-            # Should send message about enabling chat mode with clear indication that translations are ignored
+            # Should send confirmation message when enabling chat mode
             mock_send.assert_called_once()
             call_args = mock_send.call_args[0]
             message = call_args[1]
-            self.assertIn('Chat Mode Enabled', message)
+            self.assertIn('Chat Mode Activated', message)
             self.assertIn('Translations are now ignored', message)
-            self.assertIn('completely ignored', message)
-            self.assertIn('no responses or translations', message)
 
     @patch.object(TelegramBot, 'send_message')
     def test_handle_command_chatmode_toggle_to_translation(self, mock_send):
-        """Test /chatmode command toggle to translation mode - should show translations back message"""
+        """Test /chatmode command toggle to translation mode - sends confirmation message"""
         with patch.object(self.bot.db, 'get_chat_mode', return_value='chat'), \
-             patch.object(self.bot.db, 'set_chat_mode', return_value=True), \
-             patch.object(self.bot, 'get_user_language_pair', return_value=('en', 'es')):
+             patch.object(self.bot.db, 'set_chat_mode', return_value=True):
 
             self.bot._handle_command(123, 456, '/chatmode')
 
-            # Should send message about re-enabling translation mode with clear indication that translations are back
+            # Should send confirmation message when re-enabling translation mode
             mock_send.assert_called_once()
             call_args = mock_send.call_args[0]
             message = call_args[1]
             self.assertIn('Translation Mode Re-Enabled', message)
             self.assertIn('Translations are back', message)
-            self.assertIn('English', message)
-            self.assertIn('Spanish', message)
 
     @patch.object(TelegramBot, 'send_message')
     def test_handle_command_chatmode_toggle_failure_chat_mode(self, mock_send):

@@ -1083,23 +1083,20 @@ _Keep translating to increase your stats!_ 🚀
             self.send_message(chat_id, response)
 
         elif cmd == '/chatmode':
-            # Toggle between translation and chat modes
+            # Toggle between translation and chat modes - send confirmation, then be silent
             current_mode = self.db.get_chat_mode(chat_id)
             if current_mode == 'translation':
-                # Switch to chat mode
+                # Switch to chat mode - send confirmation
                 if self.db.set_chat_mode(chat_id, 'chat'):
-                    self.send_message(chat_id, "💬 *Chat Mode Enabled*\n\n🚫 *Translations are now ignored!*\nAll messages will be completely ignored - no responses or translations.\n\nUse `/chatmode` again to re-enable translations.")
+                    self.send_message(chat_id, "💬 *Chat Mode Activated*\n\n🚫 *Translations are now ignored!*\nAll messages will be completely ignored - no responses or translations.")
                 else:
-                    self.send_message(chat_id, "❌ Failed to enable chat mode. Please try again.")
+                    self.send_message(chat_id, "❌ Failed to enable chat mode.")
             else:
-                # Switch to translation mode
+                # Switch to translation mode - send confirmation
                 if self.db.set_chat_mode(chat_id, 'translation'):
-                    current_pair = self.get_user_language_pair(chat_id)
-                    lang1_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[0], current_pair[0])
-                    lang2_name = LanguageDetector.SUPPORTED_LANGUAGES.get(current_pair[1], current_pair[1])
-                    self.send_message(chat_id, f"🔄 *Translation Mode Re-Enabled*\n\n✅ *Translations are back!*\nI will now translate messages between {lang1_name} and {lang2_name}.\n\nUse `/chatmode` again to disable translations.")
+                    self.send_message(chat_id, "🔄 *Translation Mode Re-Enabled*\n\n✅ *Translations are back!*\nMessages will now be translated normally.")
                 else:
-                    self.send_message(chat_id, "❌ Failed to re-enable translation mode. Please try again.")
+                    self.send_message(chat_id, "❌ Failed to re-enable translation mode.")
 
         else:
             self.send_message(chat_id, "❓ Unknown command. Use /help to see available commands.")
