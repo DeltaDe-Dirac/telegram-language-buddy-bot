@@ -314,10 +314,17 @@ class TelegramBot:
     def _handle_voice_message(self, message: Dict, chat_id: int, user_id: int, user_name: str) -> None:
         """Handle voice message transcription and translation with intelligent fallback strategy"""
         try:
+            # Check if chat is in chat mode (no translation/transcription)
+            chat_mode = self.db.get_chat_mode(chat_id)
+            if chat_mode == 'chat':
+                logger.info(f"Chat {chat_id} is in chat mode, ignoring voice message completely")
+                # In chat mode, completely ignore voice messages - don't send any response
+                return
+
             voice = message['voice']
             file_id = voice['file_id']
             duration = voice.get('duration', 0)
-            
+
             logger.info(f"Processing voice message from {user_name} (duration: {duration}s)")
             
             # Step 1: Get language pair for user
@@ -675,18 +682,25 @@ class TelegramBot:
             user_id = message['from']['id']
             message_id = message['message_id']
             text = message.get('text', '').strip()
-            
+
             if not text:
                 return
-            
+
+            # Check if chat is in chat mode (no translation)
+            chat_mode = self.db.get_chat_mode(chat_id)
+            if chat_mode == 'chat':
+                logger.info(f"Chat {chat_id} is in chat mode, ignoring edited message completely")
+                # In chat mode, completely ignore edited messages - don't send any response
+                return
+
             # Handle commands in edited messages
             if text.startswith('/'):
                 self._handle_command(chat_id, user_id, text)
                 return
-            
+
             # Get previous translation for this message
             previous_translation = self.db.get_message_translation(chat_id, message_id)
-            
+
             if previous_translation:
                 self._handle_edited_message_with_previous_translation(
                     message, chat_id, user_id, message_id, text, previous_translation
@@ -695,7 +709,7 @@ class TelegramBot:
                 # No previous translation found, treat as new message
                 logger.info(f"No previous translation found for edited message {message_id} in chat {chat_id}")
                 self._handle_message(message)
-                
+
         except (KeyError, ValueError, TypeError) as e:
             logger.error(f"Error handling edited message: {e}")
     
