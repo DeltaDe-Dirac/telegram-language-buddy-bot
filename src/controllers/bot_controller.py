@@ -1,7 +1,6 @@
 import json
 import logging
 import requests
-import threading
 from datetime import datetime
 from flask import request, jsonify
 
@@ -12,34 +11,28 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-class BotSingleton:
-    """Thread-safe singleton for TelegramBot instance"""
-    _instance = None
-    _lock = threading.Lock()
-    
-    def __new__(cls):
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._bot = None
-        return cls._instance
-    
-    def get_bot(self):
-        """Get or create bot instance"""
-        if self._bot is None:
-            with self._lock:
-                if self._bot is None:
-                    self._bot = TelegramBot()
-                    logger.info("Created new TelegramBot instance")
-        return self._bot
+# Module-level bot instance (lazy initialization)
+_bot_instance = None
 
-# Global singleton instance
-bot_singleton = BotSingleton()
+def _get_bot():
+    """Get bot instance, creating it on first call"""
+    global _bot_instance
+    if _bot_instance is None:
+        _bot_instance = TelegramBot()
+        logger.info("TelegramBot instance created")
+    return _bot_instance
 
-def get_bot():
-    """Get bot instance from singleton"""
-    return bot_singleton.get_bot()
+class BotProxy:
+    """Proxy to lazy-initialized bot instance"""
+    def __getattr__(self, name):
+        return getattr(_get_bot(), name)
+    
+    def __call__(self, *args, **kwargs):
+        """Allow calling the proxy as if it were the bot instance"""
+        bot = _get_bot()
+        return bot(*args, **kwargs)
+
+bot = BotProxy()
 
 def home():
     """Health check endpoint"""
@@ -56,7 +49,7 @@ def webhook():
         update = request.get_json()
         logger.info(f"Received update: {json.dumps(update, indent=2)}")
         
-        get_bot().process_message(update)
+        bot.process_message(update)
         return jsonify({"ok": True})
         
     except (ValueError, TypeError, KeyError) as e:
@@ -70,7 +63,7 @@ def set_webhook():
         if not webhook_url:
             return jsonify({"error": "URL is required"}), 400
         
-        url = f"{get_bot().base_url}/setWebhook"
+        url = f"{bot.base_url}/setWebhook"
         payload = {"url": webhook_url}
         
         response = requests.post(url, json=payload)
@@ -86,14 +79,14 @@ def manual_translate():
     try:
         data = request.get_json()
         text = data.get('text')
-        detected_lang = get_bot().translator.detect_language(text)
+        detected_lang = bot.translator.detect_language(text)
         lang1 = data.get('lang1', detected_lang)
         lang2 = data.get('lang2', 'en')
 
         if detected_lang != lang1:
             logger.warning(f"Detected language is {detected_lang}, but requested to translate from {lang1}")
         
-        translated = get_bot().translator.translate_text(text, lang2, lang1)
+        translated = bot.translator.translate_text(text, lang2, lang1)
         
         return jsonify({
             "original": text,
@@ -109,7 +102,6 @@ def manual_translate():
 def get_stats():
     """Get bot statistics from database"""
     try:
-        bot = get_bot()
         all_preferences = bot.db.get_all_preferences()
         total_users = len(all_preferences)
         
@@ -148,7 +140,6 @@ def get_stats():
 def get_voice_status():
     """Get voice transcription service status"""
     try:
-        bot = get_bot()
         status = bot.voice_transcriber.get_service_status()
         
         # Add additional info
@@ -159,4 +150,4 @@ def get_voice_status():
         return jsonify(status)
         
     except (AttributeError, KeyError, TypeError) as e:
-        return jsonify({"error": str(e)}), 500 
+        return jsonify({"error": str(e)}), 500

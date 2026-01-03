@@ -37,7 +37,7 @@ This directory contains comprehensive unit tests and integration tests for the T
   - API endpoints
   - Request processing
   - Response formatting
-  - Singleton pattern
+  - Module-level bot instance
 
 ### Integration Tests
 
