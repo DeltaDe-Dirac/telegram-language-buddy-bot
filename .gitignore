@@ -215,6 +215,7 @@ bot_data.db
 *service-account*.json
 *credentials*.json
 *key*.json
+!railway.json
 !package.json
 !package-lock.json
 !tsconfig.json
