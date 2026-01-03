@@ -60,6 +60,16 @@ class MessageTranslation(Base):
         {'sqlite_autoincrement': True} if 'sqlite' in os.getenv('DATABASE_URL', 'sqlite:///bot_data.db') else {}
     )
 
+class ChatMode(Base):
+    """Database model for chat mode (translation enabled/disabled)"""
+    __tablename__ = 'chat_mode'
+    
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, unique=True, nullable=False)
+    enabled = Column(Integer, nullable=False, default=0)  # 0 = disabled (translations active), 1 = enabled (translations disabled)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
 class DatabaseManager:
     """Database manager for the bot"""
     
@@ -113,7 +123,7 @@ class DatabaseManager:
     def _needs_schema_fix(self, conn, table_name: str) -> bool:
         """Check if a table needs schema fix (has non-BIGINT chat_id or user_id)"""
         # Check chat_id column for tables that have it
-        if table_name in ['user_preferences', 'language_selection_state', 'message_translations']:
+        if table_name in ['user_preferences', 'language_selection_state', 'message_translations', 'chat_mode']:
             column_type = self._check_column_type(conn, table_name, 'chat_id')
             if column_type and column_type != 'bigint':
                 logger.warning(f"Table {table_name} has chat_id as {column_type}, need to fix...")
@@ -137,7 +147,7 @@ class DatabaseManager:
                     SELECT table_name 
                     FROM information_schema.tables 
                     WHERE table_schema = 'public' 
-                    AND table_name IN ('user_preferences', 'language_selection_state', 'message_translations', 'user_stats')
+                    AND table_name IN ('user_preferences', 'language_selection_state', 'message_translations', 'user_stats', 'chat_mode')
                 """))
                 existing_tables = [row[0] for row in result]
                 
@@ -328,6 +338,46 @@ class DatabaseManager:
             except (OSError, ImportError, AttributeError, ValueError) as e:
                 session.rollback()
                 logger.error(f"Error clearing selection state for chat {chat_id}: {e}")
+                return False
+    
+    def get_chat_mode(self, chat_id: int) -> bool:
+        """Get chat mode for a chat. Returns True if chatmode is enabled (translations disabled), False otherwise"""
+        with self.get_session() as session:
+            try:
+                chat_mode = session.query(ChatMode).filter(ChatMode.chat_id == chat_id).first()
+                if chat_mode:
+                    return bool(chat_mode.enabled)
+                # Default is False (translations active)
+                return False
+            except (OSError, ImportError, AttributeError, ValueError) as e:
+                logger.error(f"Error getting chat mode for chat {chat_id}: {e}")
+                return False
+    
+    def set_chat_mode(self, chat_id: int, enabled: bool) -> bool:
+        """Set chat mode for a chat. enabled=True means translations are disabled, enabled=False means translations are active"""
+        with self.get_session() as session:
+            try:
+                chat_mode = session.query(ChatMode).filter(ChatMode.chat_id == chat_id).first()
+                
+                if chat_mode:
+                    # Update existing chat mode
+                    chat_mode.enabled = 1 if enabled else 0
+                    chat_mode.updated_at = datetime.now(timezone.utc)
+                else:
+                    # Create new chat mode
+                    new_chat_mode = ChatMode(
+                        chat_id=chat_id,
+                        enabled=1 if enabled else 0
+                    )
+                    session.add(new_chat_mode)
+                
+                session.commit()
+                logger.info(f"Set chat mode for chat {chat_id}: enabled={enabled}")
+                return True
+                
+            except (OSError, ImportError, AttributeError, ValueError) as e:
+                session.rollback()
+                logger.error(f"Error setting chat mode for chat {chat_id}: {e}")
                 return False
     
     def store_message_translation(self, chat_id: int, message_id: int, user_id: int, 

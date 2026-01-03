@@ -207,6 +207,7 @@ The bot automatically uses PostgreSQL in production:
 - `/start` - Welcome message and instructions
 - `/setpair` - Set your preferred language pair (two-step process)
 - `/stats` - View translation statistics
+- `/chatmode` - Toggle translation mode (enable/disable translations)
 - `/help` - Show available commands
 - `/languages` - List all supported languages
 
