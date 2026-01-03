@@ -980,9 +980,9 @@ _Just send me a message to get started!_ 🚀
 • `/start` - Welcome message
 • `/setpair` - Choose your language pair
 • `/stats` - View your translation statistics
-• `/languages` - List all supported languages
 • `/chatmode` - Toggle translation mode (enable/disable translations)
 • `/help` - Show this help
+• `/languages` - List all supported languages
 
 *Pro Tips:*
 • Set your language pair once with /setpair
