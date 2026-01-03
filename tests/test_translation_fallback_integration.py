@@ -31,7 +31,8 @@ def test_translation_fallback_to_openai(monkeypatch):
     """
 
     # Ensure an OpenAI key is present (dummy value is fine for the mock)
-    os.environ['OPENAI_API_KEY'] = 'dummy-key'
+    # Use monkeypatch to set env var so it's automatically restored after test
+    monkeypatch.setenv('OPENAI_API_KEY', 'dummy-key')
 
     # Force the Google Translate path to fail by returning None
     def fake_google_translate(*args, **kwargs):

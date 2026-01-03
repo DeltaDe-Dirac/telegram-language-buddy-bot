@@ -2,7 +2,7 @@ name: Test
 
 on:
   push:
-    branches: [ main, develop, disable-translation-command ]
+    branches: [ main, develop]
   pull_request:
     branches: [ main ]
 
@@ -38,7 +38,7 @@ jobs:
     - name: Run tests
       env:
         FLASK_ENV: testing
-        DATABASE_URL: sqlite:///:memory:
+        DATABASE_URL: "sqlite:///:memory:"
         TELEGRAM_BOT_TOKEN: test_token_123
         GOOGLE_APPLICATION_CREDENTIALS_JSON: '{"type": "service_account"}'
       run: |
