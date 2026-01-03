@@ -9,8 +9,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from src.controllers.bot_controller import (
-    home, webhook, set_webhook, manual_translate, get_stats,
-    BotSingleton, get_bot
+    home, webhook, set_webhook, manual_translate, get_stats, bot
 )
 from src.main import app
 
@@ -20,9 +19,6 @@ class TestBotController(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        # Reset singleton for each test
-        BotSingleton._instance = None
-        
         # Create Flask test client
         self.client = app.test_client()
         
@@ -61,17 +57,13 @@ class TestBotController(unittest.TestCase):
     
 
     
-    def test_bot_singleton_pattern(self):
-        """Test that BotSingleton follows singleton pattern"""
-        # Create first instance
-        singleton1 = BotSingleton()
-        self.assertIsNotNone(singleton1)
-        
-        # Create second instance
-        singleton2 = BotSingleton()
-        
-        # Should be the same instance
-        self.assertIs(singleton1, singleton2)
+    def test_bot_instance_exists(self):
+        """Test that bot instance exists and is accessible"""
+        from src.controllers.bot_controller import bot
+        self.assertIsNotNone(bot)
+        self.assertTrue(hasattr(bot, 'process_message'))
+        self.assertTrue(hasattr(bot, 'translator'))
+        self.assertTrue(hasattr(bot, 'db'))
     
 
 

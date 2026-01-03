@@ -22,7 +22,7 @@ This file contains concise, actionable guidance for AI coding agents working on 
 - Database:
   - `src/models/database.py` uses SQLAlchemy and defaults to SQLite for dev. Production expects `DATABASE_URL` (Postgres) and the manager includes schema-fix logic for `BIGINT` chat/user IDs.
   - Use `DatabaseManager.get_session()` (context-managed usage) and prefer `with db.get_session() as session:` patterns already in the code.
-- Singleton Bot pattern: `BotSingleton` in `src/controllers/bot_controller.py` creates a thread-safe global `TelegramBot` instance used by request handlers — prefer obtaining the bot via `get_bot()` rather than instantiating `TelegramBot()` directly.
+- Bot instance: `src/controllers/bot_controller.py` creates a module-level `TelegramBot` instance that is shared across request handlers.
 - Voice transcription:
   - `src/models/voice_transcriber.py` orchestrates multiple services (Whisper, AssemblyAI, Google). Service availability depends on env vars: `ASSEMBLYAI_API_KEY` and a Google credentials variable.
   - Important: the code looks for `GOOGLE_APPLICATION_CREDENTIALS_JSON` (a JSON string) rather than a file path. Prefer setting the JSON string if using Google Speech. README mentions a file path variant; follow code.
