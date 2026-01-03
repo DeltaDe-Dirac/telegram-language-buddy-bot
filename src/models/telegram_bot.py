@@ -262,19 +262,26 @@ class TelegramBot:
         user_id = message['from']['id']
         user_name = message['from'].get('first_name', 'User')
         
-        # Handle voice messages first
+        # Handle text messages first to check for commands
+        text = message.get('text', '').strip()
+        
+        # Handle commands (always process commands, even when chatmode is enabled)
+        if text.startswith('/'):
+            self._handle_command(chat_id, user_id, text)
+            return
+        
+        # Check if chatmode is enabled (translations disabled)
+        if self.db.get_chat_mode(chat_id):
+            # Chatmode enabled - ignore all messages (text, voice, etc.)
+            return
+        
+        # Handle voice messages
         if 'voice' in message:
             self._handle_voice_message(message, chat_id, user_id, user_name)
             return
         
-        # Handle text messages
-        text = message.get('text', '').strip()
+        # Handle regular text messages
         if not text:
-            return
-        
-        # Handle commands
-        if text.startswith('/'):
-            self._handle_command(chat_id, user_id, text)
             return
         
         # Regular text message - translate it
@@ -941,6 +948,7 @@ I help you communicate between two languages! Set up your language pair once and
 *Commands:*
 /setpair - Choose your language pair
 /stats - View your translation statistics
+/chatmode - Toggle translation mode
 /help - Show help information
 /languages - List all supported languages
 
@@ -973,6 +981,7 @@ _Just send me a message to get started!_ 🚀
 • `/setpair` - Choose your language pair
 • `/stats` - View your translation statistics
 • `/languages` - List all supported languages
+• `/chatmode` - Toggle translation mode (enable/disable translations)
 • `/help` - Show this help
 
 *Pro Tips:*
@@ -1026,6 +1035,21 @@ _Need help? Just ask!_ 💬
 _Keep translating to increase your stats!_ 🚀
             """
             self.send_message(chat_id, response)
+            
+        elif cmd == '/chatmode':
+            # Toggle chat mode
+            current_mode = self.db.get_chat_mode(chat_id)
+            new_mode = not current_mode
+            
+            if self.db.set_chat_mode(chat_id, new_mode):
+                if new_mode:
+                    # Chatmode enabled - translations disabled
+                    self.send_message(chat_id, "Chat mode enabled. Translations are now disabled. All messages will be ignored except commands.")
+                else:
+                    # Chatmode disabled - translations active
+                    self.send_message(chat_id, "Chat mode disabled. Translations are now active again.")
+            else:
+                self.send_message(chat_id, "❌ Failed to toggle chat mode. Please try again.")
             
         else:
             self.send_message(chat_id, "❓ Unknown command. Use /help to see available commands.") 

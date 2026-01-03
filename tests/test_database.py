@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from src.models.database import DatabaseManager, UserPreferences, UserStats, LanguageSelectionState, MessageTranslation
+from src.models.database import DatabaseManager, UserPreferences, UserStats, LanguageSelectionState, MessageTranslation, ChatMode
 
 
 class TestDatabaseManager(unittest.TestCase):
@@ -420,6 +420,66 @@ class TestDatabaseManager(unittest.TestCase):
         # Verify the data is stored correctly
         result = self.db_manager.get_user_preferences(chat_id)
         self.assertEqual(result, ("en", "es"))
+    
+    def test_get_chat_mode_default(self):
+        """Test getting chat mode for non-existent chat (should default to False)"""
+        chat_id = 12345
+        result = self.db_manager.get_chat_mode(chat_id)
+        self.assertFalse(result)  # Default is False (translations active)
+    
+    def test_set_chat_mode_enable(self):
+        """Test enabling chat mode"""
+        chat_id = 12345
+        result = self.db_manager.set_chat_mode(chat_id, True)
+        self.assertTrue(result)
+        
+        # Verify it's enabled
+        mode = self.db_manager.get_chat_mode(chat_id)
+        self.assertTrue(mode)
+    
+    def test_set_chat_mode_disable(self):
+        """Test disabling chat mode"""
+        chat_id = 12345
+        # First enable it
+        self.db_manager.set_chat_mode(chat_id, True)
+        self.assertTrue(self.db_manager.get_chat_mode(chat_id))
+        
+        # Then disable it
+        result = self.db_manager.set_chat_mode(chat_id, False)
+        self.assertTrue(result)
+        
+        # Verify it's disabled
+        mode = self.db_manager.get_chat_mode(chat_id)
+        self.assertFalse(mode)
+    
+    def test_set_chat_mode_toggle(self):
+        """Test toggling chat mode multiple times"""
+        chat_id = 12345
+        
+        # Toggle on
+        self.db_manager.set_chat_mode(chat_id, True)
+        self.assertTrue(self.db_manager.get_chat_mode(chat_id))
+        
+        # Toggle off
+        self.db_manager.set_chat_mode(chat_id, False)
+        self.assertFalse(self.db_manager.get_chat_mode(chat_id))
+        
+        # Toggle on again
+        self.db_manager.set_chat_mode(chat_id, True)
+        self.assertTrue(self.db_manager.get_chat_mode(chat_id))
+    
+    def test_chat_mode_per_chat(self):
+        """Test that chat mode is per chat"""
+        chat_id1 = 12345
+        chat_id2 = 67890
+        
+        # Set different modes for different chats
+        self.db_manager.set_chat_mode(chat_id1, True)
+        self.db_manager.set_chat_mode(chat_id2, False)
+        
+        # Verify they're independent
+        self.assertTrue(self.db_manager.get_chat_mode(chat_id1))
+        self.assertFalse(self.db_manager.get_chat_mode(chat_id2))
 
 
 if __name__ == '__main__':

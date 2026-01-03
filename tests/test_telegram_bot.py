@@ -361,6 +361,108 @@ class TestTelegramBot(unittest.TestCase):
         message_text = call_args[0][1]  # First positional argument is text
         self.assertIn("Unknown command", message_text)
         self.assertIn("/help", message_text)
+    
+    @patch.object(TelegramBot, 'send_message')
+    @patch.object(TelegramBot, 'db')
+    def test_handle_command_chatmode_enable(self, mock_db, mock_send):
+        """Test enabling chat mode"""
+        mock_db.get_chat_mode.return_value = False
+        mock_db.set_chat_mode.return_value = True
+        
+        self.bot._handle_command(12345, 67890, "/chatmode")
+        
+        # Verify set_chat_mode was called with True
+        mock_db.set_chat_mode.assert_called_once_with(12345, True)
+        # Verify message was sent
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        self.assertIn("enabled", call_args[0][1].lower())
+        self.assertIn("disabled", call_args[0][1].lower())
+    
+    @patch.object(TelegramBot, 'send_message')
+    @patch.object(TelegramBot, 'db')
+    def test_handle_command_chatmode_disable(self, mock_db, mock_send):
+        """Test disabling chat mode"""
+        mock_db.get_chat_mode.return_value = True
+        mock_db.set_chat_mode.return_value = True
+        
+        self.bot._handle_command(12345, 67890, "/chatmode")
+        
+        # Verify set_chat_mode was called with False
+        mock_db.set_chat_mode.assert_called_once_with(12345, False)
+        # Verify message was sent
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        self.assertIn("disabled", call_args[0][1].lower())
+        self.assertIn("active", call_args[0][1].lower())
+    
+    @patch.object(TelegramBot, '_handle_text_message')
+    @patch.object(TelegramBot, 'db')
+    def test_handle_message_with_chatmode_enabled(self, mock_db, mock_handle_text):
+        """Test that messages are ignored when chatmode is enabled"""
+        mock_db.get_chat_mode.return_value = True
+        
+        message = {
+            'chat': {'id': 12345},
+            'from': {'id': 67890, 'first_name': 'Test'},
+            'text': 'Hello world'
+        }
+        
+        self.bot._handle_message(message)
+        
+        # Verify text message handler was NOT called
+        mock_handle_text.assert_not_called()
+    
+    @patch.object(TelegramBot, '_handle_text_message')
+    @patch.object(TelegramBot, 'db')
+    def test_handle_message_with_chatmode_disabled(self, mock_db, mock_handle_text):
+        """Test that messages are processed when chatmode is disabled"""
+        mock_db.get_chat_mode.return_value = False
+        
+        message = {
+            'chat': {'id': 12345},
+            'from': {'id': 67890, 'first_name': 'Test'},
+            'text': 'Hello world'
+        }
+        
+        self.bot._handle_message(message)
+        
+        # Verify text message handler WAS called
+        mock_handle_text.assert_called_once()
+    
+    @patch.object(TelegramBot, '_handle_command')
+    @patch.object(TelegramBot, 'db')
+    def test_handle_message_commands_always_processed(self, mock_db, mock_handle_cmd):
+        """Test that commands are always processed even when chatmode is enabled"""
+        mock_db.get_chat_mode.return_value = True  # Chatmode enabled
+        
+        message = {
+            'chat': {'id': 12345},
+            'from': {'id': 67890, 'first_name': 'Test'},
+            'text': '/help'
+        }
+        
+        self.bot._handle_message(message)
+        
+        # Verify command handler was called
+        mock_handle_cmd.assert_called_once_with(12345, 67890, '/help')
+    
+    @patch.object(TelegramBot, '_handle_voice_message')
+    @patch.object(TelegramBot, 'db')
+    def test_handle_message_voice_ignored_when_chatmode_enabled(self, mock_db, mock_handle_voice):
+        """Test that voice messages are ignored when chatmode is enabled"""
+        mock_db.get_chat_mode.return_value = True
+        
+        message = {
+            'chat': {'id': 12345},
+            'from': {'id': 67890, 'first_name': 'Test'},
+            'voice': {'file_id': 'test_file_id', 'duration': 5}
+        }
+        
+        self.bot._handle_message(message)
+        
+        # Verify voice handler was NOT called
+        mock_handle_voice.assert_not_called()
 
 
 if __name__ == '__main__':
